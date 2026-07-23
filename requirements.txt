@@ -1,0 +1,6 @@
+flwr==1.8.0
+torch==2.2.0
+torchvision==0.17.0
+streamlit==1.31.0
+matplotlib==3.8.3
+pandas==2.2.0
