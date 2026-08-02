@@ -218,3 +218,16 @@ __marimo__/
 .streamlit/secrets.toml
 
 TODO.md
+
+# Python virtual environment
+xray/
+venv/
+.venv/
+
+# Dataset
+federated_healthcare/data/
+federated_healthcare/chest_xray/
+
+# Python cache
+__pycache__/
+*.pyc
