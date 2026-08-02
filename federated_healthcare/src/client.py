@@ -15,7 +15,11 @@ DATA_PATH = os.environ.get("DATA_PATH", "./data/hospital_A")
 SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
 
 # Initialize Local Model
-net = ChestCNN()
+#net = ChestCNN()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+net = ChestCNN().to(device)
 
 # Load actual data using the utility
 trainloader, testloader = load_hospital_data(DATA_PATH)
@@ -39,7 +43,14 @@ class HospitalClient(fl.client.NumPyClient):
         self.set_parameters(parameters)
         loss, accuracy = test(net, testloader)
         print(f"Local Evaluation - Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
-        return float(loss), len(testloader.dataset), {"accuracy": float(accuracy)}
+        return (
+                float(loss),
+                len(testloader.dataset),
+                {
+                    "accuracy": float(accuracy),
+                    "loss"  : float(loss),
+                },
+            )
 
 if __name__ == "__main__":
     fl.client.start_numpy_client(server_address=SERVER_ADDRESS, client=HospitalClient())
