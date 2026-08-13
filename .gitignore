@@ -231,3 +231,37 @@ federated_healthcare/chest_xray/
 # Python cache
 __pycache__/
 *.pyc
+
+
+# ==========================================
+# Datasets & Large Files
+# ==========================================
+data/
+federated_healthcare/raw/
+*.pth
+*.pt
+
+# ==========================================
+# Runtime CSV Metrics & Baseline Logs
+# ==========================================
+*.csv
+federated_healthcare/Hospital_*.csv
+federated_healthcare/dashboard/Hospital_*.csv
+federated_healthcare/dashboard/metrics.csv
+federated_healthcare/dashboard/round_metrics.csv
+
+# ==========================================
+# Generated Dashboard Plots / Charts
+# ==========================================
+federated_healthcare/dashboard/plots/*.png
+
+# ==========================================
+# Python / Environment / OS Junk
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.DS_Store
+.vscode/

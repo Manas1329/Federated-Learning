@@ -6,7 +6,11 @@ import random
 random.seed(42)
 
 # Dataset path
-RAW_DATA_DIR = "chest_xray/train"
+# Change Line 9 from this:
+# RAW_DATA_DIR = r"C:\Users\lab607\Desktop\FL\Federated-Learning\federated_healthcare\raw\chest_xray"
+
+# To this:
+RAW_DATA_DIR = r"C:\Users\lab607\Desktop\FL\Federated-Learning\federated_healthcare\raw\chest_xray\chest_xray\train"
 
 # Output folder
 TARGET_BASE_DIR = "data"
