@@ -12,6 +12,10 @@ from collections import OrderedDict
 from model import ChestCNN, train, test
 from utils import load_hospital_data
 
+from quantization import (
+    quantize_parameters,
+)
+
 
 # --------------------------------------------------
 # Configuration
@@ -128,30 +132,29 @@ class HospitalClient(fl.client.NumPyClient):
         # Get round number from server config
         round_number = config.get("server_round", 0)
 
-        print("\n" + "=" * 50)
+        print("\n" + "=" * 60)
         print(f"[{CLIENT_NAME}] Federated Round {round_number}")
-        print("=" * 50)
+        print("=" * 60)
 
-        # ----------------------------------------------
-        # Total training timer
-        # ----------------------------------------------
+        # ============================================================
+        # TOTAL TRAINING TIMER
+        # ============================================================
 
         total_training_start = time.perf_counter()
 
-        # ----------------------------------------------
-        # Epoch timing
-        # ----------------------------------------------
+        # ============================================================
+        # EPOCH TIMING
+        # ============================================================
 
         epoch_times = []
 
-        # Your current training = 2 epochs
         NUM_EPOCHS = 2
 
         for epoch in range(NUM_EPOCHS):
 
             epoch_start = time.perf_counter()
 
-            # Train for one epoch
+            # Train exactly one epoch
             train(
                 net,
                 trainloader,
@@ -160,7 +163,10 @@ class HospitalClient(fl.client.NumPyClient):
 
             epoch_end = time.perf_counter()
 
-            epoch_time = epoch_end - epoch_start
+            epoch_time = (
+                epoch_end -
+                epoch_start
+            )
 
             epoch_times.append(epoch_time)
 
@@ -177,19 +183,44 @@ class HospitalClient(fl.client.NumPyClient):
             total_training_start
         )
 
-        # ----------------------------------------------
-        # Get model parameters
-        # ----------------------------------------------
+        # ============================================================
+        # GET NORMAL FP32 PARAMETERS
+        # ============================================================
 
-        parameters = self.get_parameters(config={})
+        fp32_parameters = self.get_parameters(
+            config={}
+        )
 
-        # ----------------------------------------------
-        # Calculate payload size
-        # ----------------------------------------------
+        # ============================================================
+        # CALCULATE ORIGINAL FP32 PAYLOAD
+        # ============================================================
 
-        payload_bytes = calculate_payload_size(parameters)
+        original_payload_bytes = calculate_payload_size(
+            fp32_parameters
+        )
 
-        payload_mb = payload_bytes / (1024 * 1024)
+        original_payload_mb = (
+            original_payload_bytes /
+            (1024 * 1024)
+        )
+
+        # ============================================================
+        # INT8 QUANTIZATION
+        # ============================================================
+
+        (
+            quantized_parameters,
+            quantized_payload_bytes,
+            quantized_payload_mb,
+            compression_ratio,
+            reduction_percent
+        ) = quantize_parameters(
+            fp32_parameters
+        )
+
+        # ============================================================
+        # PRINT RESULTS
+        # ============================================================
 
         print(
             f"[{CLIENT_NAME}] "
@@ -199,38 +230,94 @@ class HospitalClient(fl.client.NumPyClient):
 
         print(
             f"[{CLIENT_NAME}] "
-            f"Payload Size: "
-            f"{payload_mb:.2f} MB"
+            f"FP32 Payload Size: "
+            f"{original_payload_mb:.4f} MB"
         )
 
-        # ----------------------------------------------
-        # Save training record
-        # ----------------------------------------------
+        print(
+            f"[{CLIENT_NAME}] "
+            f"INT8 Payload Size: "
+            f"{quantized_payload_mb:.4f} MB"
+        )
 
-        with open(CSV_FILE, "a", newline="") as f:
+        print(
+            f"[{CLIENT_NAME}] "
+            f"Compression Ratio: "
+            f"{compression_ratio:.2f}x"
+        )
+
+        print(
+            f"[{CLIENT_NAME}] "
+            f"Payload Reduction: "
+            f"{reduction_percent:.2f}%"
+        )
+
+        # ============================================================
+        # SAVE TRAINING RECORD
+        # ============================================================
+
+        with open(
+            CSV_FILE,
+            "a",
+            newline=""
+        ) as f:
 
             writer = csv.writer(f)
 
-            for i, epoch_time in enumerate(epoch_times):
+            for i, epoch_time in enumerate(
+                epoch_times
+            ):
 
                 writer.writerow([
                     CLIENT_NAME,
                     round_number,
                     epoch_time,
                     total_training_time,
-                    payload_bytes,
-                    payload_mb,
-                    "",
-                    "",
+
+                    # Original FP32 payload
+                    original_payload_bytes,
+                    original_payload_mb,
+
+                    # Quantized INT8 payload
+                    quantized_payload_bytes,
+                    quantized_payload_mb,
+
+                    # Quantization information
+                    compression_ratio,
+                    reduction_percent,
+
                     str(device)
                 ])
 
+        # ============================================================
+        # RETURN QUANTIZED PARAMETERS
+        # ============================================================
+
         return (
-            parameters,
+            quantized_parameters,
+
             len(trainloader.dataset),
+
             {
-                "training_time": float(total_training_time),
-                "payload_size_mb": float(payload_mb)
+                "training_time": float(
+                    total_training_time
+                ),
+
+                "payload_size_mb": float(
+                    original_payload_mb
+                ),
+
+                "quantized_payload_mb": float(
+                    quantized_payload_mb
+                ),
+
+                "compression_ratio": float(
+                    compression_ratio
+                ),
+
+                "payload_reduction_percent": float(
+                    reduction_percent
+                )
             }
         )
 
