@@ -250,6 +250,10 @@ federated_healthcare/dashboard/Hospital_*.csv
 federated_healthcare/dashboard/metrics.csv
 federated_healthcare/dashboard/round_metrics.csv
 
+# Allow generated CSV files in dashboard and results folder to be pushed
+!federated_healthcare/dashboard/*.csv
+!federated_healthcare/dashboard/results/*.csv
+
 # ==========================================
 # Generated Dashboard Plots / Charts
 # ==========================================

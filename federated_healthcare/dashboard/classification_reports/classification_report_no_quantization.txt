@@ -1,0 +1,11 @@
+Chest X-ray Pneumonia Classification Report
+============================================================
+
+              precision    recall  f1-score   support
+
+      NORMAL     0.9839    0.9385    0.9606       195
+   PNEUMONIA     0.8125    0.9455    0.8739        55
+
+    accuracy                         0.9400       250
+   macro avg     0.8982    0.9420    0.9173       250
+weighted avg     0.9462    0.9400    0.9416       250

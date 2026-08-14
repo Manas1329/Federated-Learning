@@ -4,6 +4,18 @@ import time
 import pandas as pd
 import torch
 
+# Load environment variables from .env file if present
+if os.path.exists(".env"):
+    with open(".env") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                k = key.strip()
+                if k not in os.environ:
+                    os.environ[k] = val.strip()
+
+
 from collections import OrderedDict
 from flwr.common import parameters_to_ndarrays
 from model import ChestCNN
@@ -19,8 +31,11 @@ from quantization import (
 from dataclasses import replace
 
 # --------------------------------------------------
-# Paths
+# Paths & Config
 # --------------------------------------------------
+
+USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
+SUFFIX = "quantized" if USE_QUANTIZATION else "no_quantization"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -28,16 +43,21 @@ BASE_DIR = os.path.dirname(
     )
 )
 
-METRICS_FILE = os.path.join(
+RESULTS_DIR = os.path.join(
     BASE_DIR,
     "dashboard",
-    "metrics.csv"
+    "results"
+)
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+METRICS_FILE = os.path.join(
+    RESULTS_DIR,
+    f"metrics_{SUFFIX}.csv"
 )
 
 ROUND_METRICS_FILE = os.path.join(
-    BASE_DIR,
-    "dashboard",
-    "round_metrics.csv"
+    RESULTS_DIR,
+    f"round_metrics_{SUFFIX}.csv"
 )
 
 MODEL_DIR = os.path.join(
@@ -52,7 +72,7 @@ os.makedirs(
 
 MODEL_PATH = os.path.join(
     MODEL_DIR,
-    "global_model.pth"
+    f"global_model_{SUFFIX}.pth"
 )
 
 
@@ -117,6 +137,28 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             for client in clients
         ]
 
+    def configure_evaluate(
+        self,
+        server_round,
+        parameters,
+        client_manager,
+    ):
+        config = {
+            "server_round": server_round
+        }
+        evaluate_ins = fl.common.EvaluateIns(
+            parameters,
+            config
+        )
+        clients = client_manager.sample(
+            num_clients=self.min_evaluate_clients,
+            min_num_clients=self.min_evaluate_clients
+        )
+        return [
+            (client, evaluate_ins)
+            for client in clients
+        ]
+
 
     # --------------------------------------------------
     # Aggregate Fit
@@ -137,40 +179,43 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         dequantized_results = []
 
-        for client_proxy, fit_res in results:
+        if USE_QUANTIZATION:
+            for client_proxy, fit_res in results:
 
-            try:
+                try:
 
-                # Convert Flower Parameters -> NumPy arrays
-                quantized_parameters = parameters_to_ndarrays(
-                    fit_res.parameters
-                )
-
-                # INT8 -> FP32
-                fp32_parameters = dequantize_parameters(
-                    quantized_parameters
-                )
-
-                # Convert FP32 NumPy arrays back to Flower Parameters
-                fp32_parameters_flower = ndarrays_to_parameters(
-                    fp32_parameters
-                )
-
-                # Replace the INT8 parameters with FP32 parameters
-                fit_res.parameters = fp32_parameters_flower
-
-                dequantized_results.append(
-                    (
-                        client_proxy,
-                        fit_res
+                    # Convert Flower Parameters -> NumPy arrays
+                    quantized_parameters = parameters_to_ndarrays(
+                        fit_res.parameters
                     )
-                )
 
-            except Exception as e:
+                    # INT8 -> FP32
+                    fp32_parameters = dequantize_parameters(
+                        quantized_parameters
+                    )
 
-                print(
-                    f"Error dequantizing client update: {e}"
-                )
+                    # Convert FP32 NumPy arrays back to Flower Parameters
+                    fp32_parameters_flower = ndarrays_to_parameters(
+                        fp32_parameters
+                    )
+
+                    # Replace the INT8 parameters with FP32 parameters
+                    fit_res.parameters = fp32_parameters_flower
+
+                    dequantized_results.append(
+                        (
+                            client_proxy,
+                            fit_res
+                        )
+                    )
+
+                except Exception as e:
+
+                    print(
+                        f"Error dequantizing client update: {e}"
+                    )
+        else:
+            dequantized_results = results
 
         # ==========================================================
         # FEDAVG
