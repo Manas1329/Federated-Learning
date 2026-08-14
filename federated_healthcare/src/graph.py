@@ -1,178 +1,950 @@
-# import os
-# import pandas as pd
-# import matplotlib.pyplot as plt
-
-# # -------------------------------
-# # Paths
-# # -------------------------------
-# BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# METRICS_FILE = os.path.join(BASE_DIR, "dashboard", "metrics.csv")
-# OUTPUT_DIR = os.path.join(BASE_DIR, "dashboard", "plots")
-
-# os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-# # -------------------------------
-# # Read CSV
-# # -------------------------------
-# df = pd.read_csv(METRICS_FILE)
-
-# # Convert accuracy to percentage if stored as decimal
-# if df["Accuracy"].max() <= 1:
-#     df["Accuracy"] *= 100
-
-# print(df)
-
-# # -------------------------------
-# # Professional Style
-# # -------------------------------
-# plt.style.use("ggplot")
-
-# plt.figure(figsize=(12,7))
-
-# plt.plot(
-#     df["Round"],
-#     df["Accuracy"],
-#     color="royalblue",
-#     marker="o",
-#     markersize=9,
-#     linewidth=3,
-#     label="Global Accuracy"
-# )
-
-# # Show values on each point
-# for x, y in zip(df["Round"], df["Accuracy"]):
-#     plt.annotate(
-#         f"{y:.2f}%",
-#         (x, y),
-#         textcoords="offset points",
-#         xytext=(0,10),
-#         ha="center",
-#         fontsize=10,
-#         fontweight="bold"
-#     )
-
-# # Highlight best accuracy
-# best_idx = df["Accuracy"].idxmax()
-
-# plt.scatter(
-#     df.loc[best_idx, "Round"],
-#     df.loc[best_idx, "Accuracy"],
-#     s=180,
-#     color="red",
-#     label="Best Accuracy"
-# )
-
-# plt.title(
-#     "Global Model Accuracy Across Federated Learning Rounds",
-#     fontsize=18,
-#     fontweight="bold"
-# )
-
-# plt.xlabel(
-#     "Federated Learning Round",
-#     fontsize=14,
-#     fontweight="bold"
-# )
-
-# plt.ylabel(
-#     "Accuracy (%)",
-#     fontsize=14,
-#     fontweight="bold"
-# )
-
-# plt.xticks(df["Round"], fontsize=11)
-# plt.yticks(fontsize=11)
-
-# plt.ylim(70,100)
-
-# plt.grid(True, linestyle="--", alpha=0.6)
-
-# plt.legend(fontsize=12)
-
-# plt.tight_layout()
-
-# plt.savefig(
-#     os.path.join(OUTPUT_DIR, "accuracy_new.png"),
-#     dpi=300,
-#     bbox_inches="tight"
-# )
-
-# plt.show()
-
-# print("\nAccuracy graph saved successfully!")
-# print("Location :", OUTPUT_DIR)
-
 import os
+from glob import glob
+
 import pandas as pd
 import matplotlib.pyplot as plt
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-csv_file = os.path.join(BASE_DIR, "dashboard", "metrics.csv")
+# ============================================================
+# PATHS
+# ============================================================
 
-plots_dir = os.path.join(BASE_DIR, "dashboard", "plots")
-os.makedirs(plots_dir, exist_ok=True)
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    )
+)
 
-df = pd.read_csv(csv_file)
+DASHBOARD_DIR = os.path.join(
+    BASE_DIR,
+    "dashboard"
+)
 
-df["Accuracy"] = df["Accuracy"] * 100
+PLOTS_DIR = os.path.join(
+    DASHBOARD_DIR,
+    "plots"
+)
 
-# ---------------- Accuracy Graph ----------------
-plt.figure(figsize=(8,5))
-
-plt.plot(df["Round"], df["Accuracy"], marker="o", linewidth=2)
-
-for x, y in zip(df["Round"], df["Accuracy"]):
-    plt.text(x, y+0.3, f"{y:.2f}%", ha="center", fontsize=8)
-
-best_idx = df["Accuracy"].idxmax()
-
-plt.scatter(df.loc[best_idx, "Round"],
-            df.loc[best_idx, "Accuracy"],
-            s=120)
-
-plt.title("Global Model Accuracy")
-plt.xlabel("Communication Round")
-plt.ylabel("Accuracy (%)")
-plt.grid(True)
-
-plt.savefig(os.path.join(plots_dir, "accuracy.png"), dpi=300)
-
-plt.close()
+os.makedirs(
+    PLOTS_DIR,
+    exist_ok=True
+)
 
 
-# ---------------- Loss Graph ----------------
-plt.figure(figsize=(8,5))
+# ============================================================
+# 1. GLOBAL MODEL GRAPHS
+#    Source: dashboard/metrics.csv
+# ============================================================
 
-plt.plot(df["Round"], df["Loss"], marker="o", linewidth=2)
-
-for x, y in zip(df["Round"], df["Loss"]):
-    plt.text(x, y+0.01, f"{y:.3f}", ha="center", fontsize=8)
-
-plt.title("Global Model Loss")
-plt.xlabel("Communication Round")
-plt.ylabel("Loss")
-plt.grid(True)
-
-plt.savefig(os.path.join(plots_dir, "loss.png"), dpi=300)
-
-plt.close()
+metrics_csv = os.path.join(
+    DASHBOARD_DIR,
+    "metrics.csv"
+)
 
 
-# ---------------- Combined Graph ----------------
-plt.figure(figsize=(9,5))
+if os.path.exists(metrics_csv):
 
-plt.plot(df["Round"], df["Accuracy"], marker="o", label="Accuracy (%)")
-plt.plot(df["Round"], df["Loss"]*100, marker="s", label="Loss ×100")
+    print("\nGenerating global model graphs...")
 
-plt.title("Accuracy vs Loss")
-plt.xlabel("Communication Round")
-plt.ylabel("Value")
-plt.legend()
-plt.grid(True)
+    df_global = pd.read_csv(metrics_csv)
 
-plt.savefig(os.path.join(plots_dir, "accuracy_loss.png"), dpi=300)
+    # Convert accuracy from 0-1 to percentage
+    if (
+        "Accuracy" in df_global.columns
+        and df_global["Accuracy"].max() <= 1
+    ):
+        df_global["Accuracy"] = (
+            df_global["Accuracy"] * 100
+        )
 
-plt.close()
 
-print("Graphs generated successfully.")
+    # --------------------------------------------------------
+    # Accuracy Graph
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(8, 5))
+
+    plt.plot(
+        df_global["Round"],
+        df_global["Accuracy"],
+        marker="o",
+        linewidth=2
+    )
+
+    for x, y in zip(
+        df_global["Round"],
+        df_global["Accuracy"]
+    ):
+        plt.text(
+            x,
+            y + 0.3,
+            f"{y:.2f}%",
+            ha="center",
+            fontsize=8
+        )
+
+    best_idx = df_global["Accuracy"].idxmax()
+
+    plt.scatter(
+        df_global.loc[best_idx, "Round"],
+        df_global.loc[best_idx, "Accuracy"],
+        s=120
+    )
+
+    plt.title("Global Model Accuracy")
+    plt.xlabel("Communication Round")
+    plt.ylabel("Accuracy (%)")
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "accuracy.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+
+    # --------------------------------------------------------
+    # Loss Graph
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(8, 5))
+
+    plt.plot(
+        df_global["Round"],
+        df_global["Loss"],
+        marker="o",
+        linewidth=2
+    )
+
+    for x, y in zip(
+        df_global["Round"],
+        df_global["Loss"]
+    ):
+        plt.text(
+            x,
+            y + 0.01,
+            f"{y:.3f}",
+            ha="center",
+            fontsize=8
+        )
+
+    plt.title("Global Model Loss")
+    plt.xlabel("Communication Round")
+    plt.ylabel("Loss")
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "loss.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+
+    # --------------------------------------------------------
+    # Accuracy vs Loss
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(9, 5))
+
+    plt.plot(
+        df_global["Round"],
+        df_global["Accuracy"],
+        marker="o",
+        label="Accuracy (%)"
+    )
+
+    plt.plot(
+        df_global["Round"],
+        df_global["Loss"] * 100,
+        marker="s",
+        label="Loss ×100"
+    )
+
+    plt.title("Global Model Accuracy vs Loss")
+    plt.xlabel("Communication Round")
+    plt.ylabel("Value")
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "accuracy_loss.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+    print("Global model graphs generated.")
+
+
+else:
+
+    print(
+        "Global metrics.csv not found."
+    )
+
+
+# ============================================================
+# 2. LOAD CLIENT BASELINE CSV FILES
+# ============================================================
+
+client_csv_pattern = os.path.join(
+    DASHBOARD_DIR,
+    "Hospital_*_baseline.csv"
+)
+
+client_csvs = sorted(
+    glob(client_csv_pattern)
+)
+
+
+if not client_csvs:
+
+    print(
+        "\nNo Hospital baseline CSV files found."
+    )
+
+else:
+
+    print(
+        "\nFound client files:"
+    )
+
+    for file in client_csvs:
+        print(
+            " -",
+            os.path.basename(file)
+        )
+
+
+    # --------------------------------------------------------
+    # Read all client CSVs
+    # --------------------------------------------------------
+
+    client_data = []
+
+    for file in client_csvs:
+
+        try:
+
+            df = pd.read_csv(file)
+
+            # If client column doesn't exist,
+            # infer it from filename
+
+            if "client" not in df.columns:
+
+                client_name = os.path.basename(
+                    file
+                ).replace(
+                    "_baseline.csv",
+                    ""
+                )
+
+                df["client"] = client_name
+
+            client_data.append(df)
+
+        except Exception as e:
+
+            print(
+                f"Could not read {file}: {e}"
+            )
+
+
+    if client_data:
+
+        df_clients = pd.concat(
+            client_data,
+            ignore_index=True
+        )
+
+
+        # ====================================================
+        # 3. TRAINING TIME PER ROUND
+        # ====================================================
+
+        if (
+            "training_time_sec" in df_clients.columns
+            and "round" in df_clients.columns
+        ):
+
+            training = (
+                df_clients
+                .dropna(
+                    subset=[
+                        "training_time_sec"
+                    ]
+                )
+                .groupby(
+                    [
+                        "client",
+                        "round"
+                    ]
+                )["training_time_sec"]
+                .first()
+                .reset_index()
+            )
+
+
+            plt.figure(
+                figsize=(10, 6)
+            )
+
+            for client in training[
+                "client"
+            ].unique():
+
+                temp = training[
+                    training["client"] == client
+                ]
+
+                plt.plot(
+                    temp["round"],
+                    temp["training_time_sec"],
+                    marker="o",
+                    label=client
+                )
+
+            plt.xlabel(
+                "Federated Round"
+            )
+
+            plt.ylabel(
+                "Training Time (seconds)"
+            )
+
+            plt.title(
+                "Local Training Time per Federated Round"
+            )
+
+            plt.legend()
+            plt.grid(True)
+
+            plt.tight_layout()
+
+            plt.savefig(
+                os.path.join(
+                    PLOTS_DIR,
+                    "training_time_roundwise.png"
+                ),
+                dpi=300
+            )
+
+            plt.close()
+
+
+        # ====================================================
+        # 4. EPOCH-WISE TRAINING TIME
+        # ====================================================
+
+        if (
+            "epoch_time_sec" in df_clients.columns
+        ):
+
+            epoch_data = (
+                df_clients
+                .dropna(
+                    subset=[
+                        "epoch_time_sec"
+                    ]
+                )
+                .copy()
+            )
+
+
+            # Create epoch number based on
+            # order within each client/round
+
+            epoch_data[
+                "epoch_number"
+            ] = (
+                epoch_data
+                .groupby(
+                    [
+                        "client",
+                        "round"
+                    ]
+                )
+                .cumcount() + 1
+            )
+
+
+            plt.figure(
+                figsize=(10, 6)
+            )
+
+            for client in epoch_data[
+                "client"
+            ].unique():
+
+                temp = epoch_data[
+                    epoch_data["client"] == client
+                ]
+
+                # Average epoch time across rounds
+
+                epoch_avg = (
+                    temp
+                    .groupby(
+                        "epoch_number"
+                    )["epoch_time_sec"]
+                    .mean()
+                    .reset_index()
+                )
+
+                plt.plot(
+                    epoch_avg[
+                        "epoch_number"
+                    ],
+                    epoch_avg[
+                        "epoch_time_sec"
+                    ],
+                    marker="o",
+                    label=client
+                )
+
+
+            plt.xlabel(
+                "Epoch Number"
+            )
+
+            plt.ylabel(
+                "Average Epoch Time (seconds)"
+            )
+
+            plt.title(
+                "Average Training Time per Epoch"
+            )
+
+            plt.legend()
+            plt.grid(True)
+
+            plt.tight_layout()
+
+            plt.savefig(
+                os.path.join(
+                    PLOTS_DIR,
+                    "epoch_training_time.png"
+                ),
+                dpi=300
+            )
+
+            plt.close()
+
+
+        # ====================================================
+        # 5. PAYLOAD SIZE PER ROUND
+        # ====================================================
+
+        if (
+            "payload_size_mb" in df_clients.columns
+            and "round" in df_clients.columns
+        ):
+
+            payload = (
+                df_clients
+                .dropna(
+                    subset=[
+                        "payload_size_mb"
+                    ]
+                )
+                .groupby(
+                    [
+                        "client",
+                        "round"
+                    ]
+                )["payload_size_mb"]
+                .first()
+                .reset_index()
+            )
+
+
+            plt.figure(
+                figsize=(10, 6)
+            )
+
+            for client in payload[
+                "client"
+            ].unique():
+
+                temp = payload[
+                    payload["client"] == client
+                ]
+
+                plt.plot(
+                    temp["round"],
+                    temp["payload_size_mb"],
+                    marker="o",
+                    label=client
+                )
+
+
+            plt.xlabel(
+                "Federated Round"
+            )
+
+            plt.ylabel(
+                "Model Payload Size (MB)"
+            )
+
+            plt.title(
+                "Model Payload Size per Federated Round"
+            )
+
+            plt.legend()
+            plt.grid(True)
+
+            plt.tight_layout()
+
+            plt.savefig(
+                os.path.join(
+                    PLOTS_DIR,
+                    "payload_size_roundwise.png"
+                ),
+                dpi=300
+            )
+
+            plt.close()
+
+
+        # ====================================================
+        # 6. CLIENT ACCURACY PER ROUND
+        # ====================================================
+
+        if (
+            "accuracy" in df_clients.columns
+            and "round" in df_clients.columns
+        ):
+
+            accuracy = (
+                df_clients
+                .dropna(
+                    subset=[
+                        "accuracy"
+                    ]
+                )
+                .copy()
+            )
+
+
+            # Convert 0-1 accuracy to percentage
+
+            if accuracy[
+                "accuracy"
+            ].max() <= 1:
+
+                accuracy[
+                    "accuracy"
+                ] = (
+                    accuracy[
+                        "accuracy"
+                    ] * 100
+                )
+
+
+            plt.figure(
+                figsize=(10, 6)
+            )
+
+            for client in accuracy[
+                "client"
+            ].unique():
+
+                temp = accuracy[
+                    accuracy["client"] == client
+                ]
+
+                plt.plot(
+                    temp["round"],
+                    temp["accuracy"],
+                    marker="o",
+                    label=client
+                )
+
+
+            plt.xlabel(
+                "Federated Round"
+            )
+
+            plt.ylabel(
+                "Accuracy (%)"
+            )
+
+            plt.title(
+                "Client Model Accuracy per Federated Round"
+            )
+
+            plt.legend()
+            plt.grid(True)
+
+            plt.tight_layout()
+
+            plt.savefig(
+                os.path.join(
+                    PLOTS_DIR,
+                    "client_accuracy_roundwise.png"
+                ),
+                dpi=300
+            )
+
+            plt.close()
+
+
+        # ====================================================
+        # 7. CLIENT LOSS PER ROUND
+        # ====================================================
+
+        if (
+            "loss" in df_clients.columns
+            and "round" in df_clients.columns
+        ):
+
+            loss_data = (
+                df_clients
+                .dropna(
+                    subset=[
+                        "loss"
+                    ]
+                )
+            )
+
+
+            plt.figure(
+                figsize=(10, 6)
+            )
+
+            for client in loss_data[
+                "client"
+            ].unique():
+
+                temp = loss_data[
+                    loss_data["client"] == client
+                ]
+
+                plt.plot(
+                    temp["round"],
+                    temp["loss"],
+                    marker="o",
+                    label=client
+                )
+
+
+            plt.xlabel(
+                "Federated Round"
+            )
+
+            plt.ylabel(
+                "Loss"
+            )
+
+            plt.title(
+                "Client Model Loss per Federated Round"
+            )
+
+            plt.legend()
+            plt.grid(True)
+
+            plt.tight_layout()
+
+            plt.savefig(
+                os.path.join(
+                    PLOTS_DIR,
+                    "client_loss_roundwise.png"
+                ),
+                dpi=300
+            )
+
+            plt.close()
+
+
+        # ====================================================
+        # 8. AVERAGE TRAINING TIME
+        # ====================================================
+
+        if "training" in locals():
+
+            average_training = (
+                training
+                .groupby(
+                    "client"
+                )["training_time_sec"]
+                .mean()
+            )
+
+            print(
+                "\nAverage Training Time:"
+            )
+
+            print(
+                average_training
+            )
+
+
+        # ====================================================
+        # 9. AVERAGE PAYLOAD SIZE
+        # ====================================================
+
+        if "payload" in locals():
+
+            average_payload = (
+                payload
+                .groupby(
+                    "client"
+                )["payload_size_mb"]
+                .mean()
+            )
+
+            print(
+                "\nAverage Payload Size:"
+            )
+
+            print(
+                average_payload
+            )
+
+
+        # ====================================================
+        # 10. AVERAGE ACCURACY
+        # ====================================================
+
+        if "accuracy" in locals():
+
+            average_accuracy = (
+                accuracy
+                .groupby(
+                    "client"
+                )["accuracy"]
+                .mean()
+            )
+
+            print(
+                "\nAverage Client Accuracy:"
+            )
+
+            print(
+                average_accuracy
+            )
+        # ============================================================
+# 11. SERVER ROUND METRICS
+# ============================================================
+
+round_metrics_csv = os.path.join(
+    DASHBOARD_DIR,
+    "round_metrics.csv"
+)
+
+if os.path.exists(round_metrics_csv):
+
+    print("\nGenerating server round graphs...")
+
+    df_round = pd.read_csv(
+        round_metrics_csv
+    )
+
+    # --------------------------------------------------------
+    # Total Round Time
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(
+        df_round["Round"],
+        df_round["Total_Round_Time_sec"],
+        marker="o",
+        linewidth=2
+    )
+
+    plt.xlabel("Federated Round")
+    plt.ylabel("Total Round Time (seconds)")
+    plt.title("Total Federated Round Time")
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "total_round_time.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+
+    # --------------------------------------------------------
+    # Aggregation Time
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(
+        df_round["Round"],
+        df_round["Aggregation_Time_sec"],
+        marker="o",
+        linewidth=2
+    )
+
+    plt.xlabel("Federated Round")
+    plt.ylabel("Aggregation Time (seconds)")
+    plt.title("Server Aggregation Time per Round")
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "aggregation_time.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+
+    # --------------------------------------------------------
+    # Total Round Time vs Aggregation Time
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(
+        df_round["Round"],
+        df_round["Total_Round_Time_sec"],
+        marker="o",
+        label="Total Round Time"
+    )
+
+    plt.plot(
+        df_round["Round"],
+        df_round["Aggregation_Time_sec"],
+        marker="s",
+        label="Aggregation Time"
+    )
+
+    plt.xlabel("Federated Round")
+    plt.ylabel("Time (seconds)")
+    plt.title("Round Time vs Aggregation Time")
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "round_vs_aggregation_time.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+
+    # --------------------------------------------------------
+    # Client Success / Failure
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(
+        df_round["Round"],
+        df_round["Successful_Clients"],
+        marker="o",
+        label="Successful Clients"
+    )
+
+    plt.plot(
+        df_round["Round"],
+        df_round["Failed_Clients"],
+        marker="s",
+        label="Failed Clients"
+    )
+
+    plt.xlabel("Federated Round")
+    plt.ylabel("Number of Clients")
+    plt.title("Client Participation per Federated Round")
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "client_participation.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+
+    # --------------------------------------------------------
+    # Print averages
+    # --------------------------------------------------------
+
+    print("\nAverage Total Round Time:")
+    print(
+        df_round[
+            "Total_Round_Time_sec"
+        ].mean()
+    )
+
+    print("\nAverage Aggregation Time:")
+    print(
+        df_round[
+            "Aggregation_Time_sec"
+        ].mean()
+    )
+
+    print("\nRound Metrics:")
+    print(df_round)
+
+else:
+
+    print(
+        "\nround_metrics.csv not found."
+    )
+
+# ============================================================
+# FINAL MESSAGE
+# ============================================================
+
+print(
+    "\n=============================================="
+)
+
+print(
+    "All available graphs generated successfully."
+)
+
+print(
+    "Graphs saved in:"
+)
+
+print(
+    PLOTS_DIR
+)
+
+print(
+    "=============================================="
+)
