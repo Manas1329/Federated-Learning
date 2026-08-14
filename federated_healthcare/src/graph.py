@@ -948,3 +948,235 @@ print(
 print(
     "=============================================="
 )
+
+# ============================================================
+# QUANTIZATION COMPARISON
+# ============================================================
+
+import glob
+
+
+def load_experiment_files(pattern):
+
+    files = glob.glob(pattern)
+
+    frames = []
+
+    for file in files:
+
+        try:
+
+            df = pd.read_csv(file)
+
+            # Extract hospital name
+            name = os.path.basename(file)
+
+            hospital = (
+                name
+                .replace("_baseline.csv", "")
+                .replace("_quantized.csv", "")
+            )
+
+            df["hospital"] = hospital
+
+            frames.append(df)
+
+        except Exception as e:
+
+            print(
+                f"Failed to read {file}: {e}"
+            )
+
+    if frames:
+
+        return pd.concat(
+            frames,
+            ignore_index=True
+        )
+
+    return pd.DataFrame()
+
+
+# ============================================================
+# Load baseline
+# ============================================================
+
+baseline_df = load_experiment_files(
+    os.path.join(
+        DASHBOARD_DIR,
+        "Hospital_*_baseline.csv"
+    )
+)
+
+
+# ============================================================
+# Load quantized
+# ============================================================
+
+quantized_df = load_experiment_files(
+    os.path.join(
+        DASHBOARD_DIR,
+        "Hospital_*_quantized.csv"
+    )
+)
+
+
+# ============================================================
+# Payload Comparison
+# ============================================================
+
+if (
+    not baseline_df.empty
+    and not quantized_df.empty
+):
+
+    baseline_payload = (
+        baseline_df
+        .groupby("hospital")[
+            "payload_size_mb"
+        ]
+        .mean()
+    )
+
+    quantized_payload = (
+        quantized_df
+        .groupby("hospital")[
+            "quantized_payload_mb"
+        ]
+        .mean()
+    )
+
+    comparison = pd.DataFrame({
+        "Baseline FP32":
+            baseline_payload,
+
+        "Quantized INT8":
+            quantized_payload
+    })
+
+    comparison.plot(
+        kind="bar",
+        figsize=(10, 6)
+    )
+
+    plt.title(
+        "Communication Payload: "
+        "FP32 vs INT8"
+    )
+
+    plt.xlabel("Hospital")
+
+    plt.ylabel(
+        "Average Payload Size (MB)"
+    )
+
+    plt.xticks(
+        rotation=0
+    )
+
+    plt.grid(
+        axis="y",
+        linestyle="--",
+        alpha=0.6
+    )
+
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "quantization_payload_comparison.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()
+
+
+# ============================================================
+# PAYLOAD REDUCTION
+# ============================================================
+
+if (
+    not baseline_df.empty
+    and not quantized_df.empty
+):
+
+    baseline_avg = (
+        baseline_df
+        .groupby("hospital")[
+            "payload_size_mb"
+        ]
+        .mean()
+    )
+
+    quantized_avg = (
+        quantized_df
+        .groupby("hospital")[
+            "quantized_payload_mb"
+        ]
+        .mean()
+    )
+
+    reduction = (
+        (
+            baseline_avg -
+            quantized_avg
+        )
+        / baseline_avg
+    ) * 100
+
+    plt.figure(
+        figsize=(9, 6)
+    )
+
+    bars = plt.bar(
+        reduction.index,
+        reduction.values,
+        color="seagreen"
+    )
+
+    for bar, value in zip(
+        bars,
+        reduction.values
+    ):
+
+        plt.text(
+            bar.get_x()
+            + bar.get_width() / 2,
+            bar.get_height(),
+            f"{value:.2f}%",
+            ha="center",
+            va="bottom"
+        )
+
+    plt.title(
+        "Communication Payload Reduction "
+        "Using INT8 Quantization"
+    )
+
+    plt.xlabel("Hospital")
+
+    plt.ylabel(
+        "Payload Reduction (%)"
+    )
+
+    plt.grid(
+        axis="y",
+        linestyle="--",
+        alpha=0.6
+    )
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            PLOTS_DIR,
+            "payload_reduction.png"
+        ),
+        dpi=300
+    )
+
+    plt.close()

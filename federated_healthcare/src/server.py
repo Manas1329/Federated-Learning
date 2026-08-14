@@ -8,6 +8,15 @@ from collections import OrderedDict
 from flwr.common import parameters_to_ndarrays
 from model import ChestCNN
 
+from flwr.common import (
+    parameters_to_ndarrays,
+    ndarrays_to_parameters,
+)
+
+from quantization import (
+    dequantize_parameters,
+)
+from dataclasses import replace
 
 # --------------------------------------------------
 # Paths
@@ -122,29 +131,83 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         aggregation_start = time.perf_counter()
 
+        # ==========================================================
+        # DEQUANTIZE CLIENT PARAMETERS
+        # ==========================================================
+
+        dequantized_results = []
+
+        for client_proxy, fit_res in results:
+
+            try:
+
+                # Convert Flower Parameters -> NumPy arrays
+                quantized_parameters = parameters_to_ndarrays(
+                    fit_res.parameters
+                )
+
+                # INT8 -> FP32
+                fp32_parameters = dequantize_parameters(
+                    quantized_parameters
+                )
+
+                # Convert FP32 NumPy arrays back to Flower Parameters
+                fp32_parameters_flower = ndarrays_to_parameters(
+                    fp32_parameters
+                )
+
+                # Replace the INT8 parameters with FP32 parameters
+                fit_res.parameters = fp32_parameters_flower
+
+                dequantized_results.append(
+                    (
+                        client_proxy,
+                        fit_res
+                    )
+                )
+
+            except Exception as e:
+
+                print(
+                    f"Error dequantizing client update: {e}"
+                )
+
+        # ==========================================================
+        # FEDAVG
+        # ==========================================================
+
         aggregated_parameters, aggregated_metrics = (
             super().aggregate_fit(
                 server_round,
-                results,
+                dequantized_results,
                 failures,
             )
         )
+
+        # ==========================================================
+        # AGGREGATION TIME
+        # ==========================================================
 
         aggregation_time = (
             time.perf_counter()
             - aggregation_start
         )
 
-        # --------------------------------------------------
-        # Number of clients
-        # --------------------------------------------------
+        # ==========================================================
+        # NUMBER OF CLIENTS
+        # ==========================================================
 
-        successful_clients = len(results)
-        failed_clients = len(failures)
+        successful_clients = len(
+            dequantized_results
+        )
 
-        # --------------------------------------------------
-        # Round time
-        # --------------------------------------------------
+        failed_clients = len(
+            failures
+        )
+
+        # ==========================================================
+        # ROUND TIME
+        # ==========================================================
 
         if server_round in round_start_times:
 
@@ -157,10 +220,16 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
             round_time = 0
 
+        # ==========================================================
+        # PRINT RESULTS
+        # ==========================================================
 
+        print("\n")
+        print("=" * 60)
         print(
             f"Round {server_round} completed"
         )
+        print("=" * 60)
 
         print(
             f"Successful Clients: "
@@ -173,7 +242,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         )
 
         print(
-            f"Aggregation Time: "
+            f"Dequantization + Aggregation Time: "
             f"{aggregation_time:.4f} sec"
         )
 
@@ -182,10 +251,9 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             f"{round_time:.4f} sec"
         )
 
-
-        # --------------------------------------------------
-        # Save global model
-        # --------------------------------------------------
+        # ==========================================================
+        # SAVE GLOBAL MODEL
+        # ==========================================================
 
         if aggregated_parameters is not None:
 
@@ -212,6 +280,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 strict=True
             )
 
+            # Save final global model
             if server_round == 10:
 
                 torch.save(
@@ -225,10 +294,9 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 print(MODEL_PATH)
                 print("=" * 60)
 
-
-        # --------------------------------------------------
-        # Save round timing information
-        # --------------------------------------------------
+        # ==========================================================
+        # SAVE ROUND METRICS
+        # ==========================================================
 
         round_data = pd.DataFrame(
             [[
@@ -255,7 +323,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             ),
             index=False
         )
-
 
         return (
             aggregated_parameters,
