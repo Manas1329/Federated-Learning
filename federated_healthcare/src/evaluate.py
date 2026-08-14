@@ -4,6 +4,18 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
+# Load environment variables from .env file if present
+if os.path.exists(".env"):
+    with open(".env") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                k = key.strip()
+                if k not in os.environ:
+                    os.environ[k] = val.strip()
+
+
 from sklearn.metrics import (
     confusion_matrix,
     classification_report,
@@ -22,18 +34,24 @@ from utils import load_hospital_data
 # Device
 # -------------------------------
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+FORCE_CPU = os.environ.get("FORCE_CPU", "0") == "1"
+if FORCE_CPU:
+    device = torch.device("cpu")
+else:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 print(f"Using device: {device}")
 
 # -------------------------------
-# Paths
+# Paths & Config
 # -------------------------------
+
+USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
+SUFFIX = "quantized" if USE_QUANTIZATION else "no_quantization"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(__file__)
-        )
+        os.path.abspath(__file__)
     )
 )
 
@@ -44,19 +62,26 @@ MODEL_PATH = os.path.join(
         )
     ),
     "models",
-    "global_model.pth"
+    f"global_model_{SUFFIX}.pth"
 )
 
 OUTPUT_DIR = os.path.join(
     BASE_DIR,
     "dashboard",
-    "plots"
+    "plots",
+    SUFFIX
 )
 
-REPORT_PATH = os.path.join(
+REPORTS_DIR = os.path.join(
     BASE_DIR,
     "dashboard",
-    "classification_report.txt"
+    "classification_reports"
+)
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+REPORT_PATH = os.path.join(
+    REPORTS_DIR,
+    f"classification_report_{SUFFIX}.txt"
 )
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -83,7 +108,7 @@ print("Global model loaded successfully.")
 # -------------------------------
 
 DATA_PATH = os.path.join(
-    BASE_DIR,
+    os.path.dirname(BASE_DIR),
     "data",
     "hospital_A"
 )

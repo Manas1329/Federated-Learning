@@ -3,6 +3,18 @@ import os
 import time
 import csv
 
+# Load environment variables from .env file if present
+if os.path.exists(".env"):
+    with open(".env") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                k = key.strip()
+                if k not in os.environ:
+                    os.environ[k] = val.strip()
+
+
 # Ensure 'src' package is importable regardless of where the script is run from
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -27,15 +39,25 @@ SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
 # Get hospital/client name from environment
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Hospital_A")
 
+USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
+
 # CSV file for recording experiments
-CSV_FILE = f"{CLIENT_NAME}_baseline.csv"
+CSV_SUFFIX = "quantized" if USE_QUANTIZATION else "no_quantization"
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+RESULTS_DIR = os.path.join(os.path.dirname(SRC_DIR), "dashboard", "results")
+os.makedirs(RESULTS_DIR, exist_ok=True)
+CSV_FILE = os.path.join(RESULTS_DIR, f"{CLIENT_NAME}_{CSV_SUFFIX}.csv")
 
 
 # --------------------------------------------------
 # Device
 # --------------------------------------------------
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+FORCE_CPU = os.environ.get("FORCE_CPU", "0") == "1"
+if FORCE_CPU:
+    device = torch.device("cpu")
+else:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print(f"[{CLIENT_NAME}] Using device: {device}")
 
@@ -290,11 +312,13 @@ class HospitalClient(fl.client.NumPyClient):
                 ])
 
         # ============================================================
-        # RETURN QUANTIZED PARAMETERS
+        # RETURN PARAMETERS (QUANTIZED OR FP32)
         # ============================================================
 
+        returned_parameters = quantized_parameters if USE_QUANTIZATION else fp32_parameters
+
         return (
-            quantized_parameters,
+            returned_parameters,
 
             len(trainloader.dataset),
 

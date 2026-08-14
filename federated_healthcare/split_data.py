@@ -10,7 +10,7 @@ random.seed(42)
 # RAW_DATA_DIR = r"C:\Users\lab607\Desktop\FL\Federated-Learning\federated_healthcare\raw\chest_xray"
 
 # To this:
-RAW_DATA_DIR = r"C:\Users\lab607\Desktop\FL\Federated-Learning\federated_healthcare\raw\chest_xray\chest_xray\train"
+RAW_DATA_DIR = r"D:\Codes\College Projects\Major Project\Federated-Learning\data\chest_xray\chest_xray\train"
 
 # Output folder
 TARGET_BASE_DIR = "data"
