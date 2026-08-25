@@ -495,14 +495,24 @@ if __name__ == "__main__":
 
     client_manager = fl.server.SimpleClientManager()
     
+    # DP-SGD is much slower, so we need much larger timeouts
+    if USE_DP:
+        init_grace = 120.0
+        max_grace = 180.0
+        round_to = 1800.0
+    else:
+        init_grace = 30.0
+        max_grace = 45.0
+        round_to = 300.0
+
     server = AdaptiveServer(
         client_manager=client_manager,
         strategy=strategy,
         target_clients=TARGET_CLIENTS,
         min_clients=MIN_CLIENTS,
-        initial_grace_period=30.0,
-        max_grace_period=45.0,
-        round_timeout=300.0,
+        initial_grace_period=init_grace,
+        max_grace_period=max_grace,
+        round_timeout=round_to,
         suffix=SUFFIX,
         models_dir=MODEL_DIR
     )

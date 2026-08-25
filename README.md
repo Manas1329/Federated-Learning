@@ -1,6 +1,11 @@
-# Clinical Federated Learning with Dynamic INT8 Quantization
+# Clinical Federated Learning with Dynamic INT8 Quantization and DP-SGD
 
-An end-to-end framework implementing medical image classification (Pneumonia detection in Chest X-rays) using Federated Learning (FL). This project utilizes the **Flower FL framework** and simulates three isolated hospital nodes under a non-IID split. It incorporates dynamic **INT8 Quantization** to reduce the communication payload size by **75%** while retaining high performance.
+An end-to-end framework implementing medical image classification (Pneumonia detection in Chest X-rays) using Federated Learning (FL). This project utilizes the **Flower FL framework** and simulates three isolated hospital nodes under a non-IID split. 
+
+Key Features:
+* **Dynamic INT8 Quantization:** Reduces communication payload size by **75%** while retaining high performance.
+* **Differential Privacy (DP-SGD):** Leverages PyTorch **Opacus** to enforce strict mathematical privacy bounds across federated clients without resetting privacy budgets across rounds.
+* **Adaptive Dropout Handling:** Server dynamically manages timeouts and grace periods depending on whether computationally heavy DP-SGD is enabled.
 
 ---
 
@@ -32,16 +37,17 @@ Federated-Learning/
 │   ├── models/                           # PyTorch model checkpoints
 │   ├── split_data.py                     # Non-IID dataset splitter utility
 │   └── src/                              # Source code directory
-│       ├── client.py                     # FL client implementation
-│       ├── server.py                     # FL server implementation
+│       ├── client.py                     # FL client implementation (DP-SGD + INT8)
+│       ├── server.py                     # FL server implementation (Adaptive Timeouts)
 │       ├── evaluate.py                   # Global evaluation script
 │       ├── graph.py                      # Chart & metrics compiler script
-│       ├── model.py                      # ChestCNN PyTorch architecture
+│       ├── model.py                      # ChestCNN PyTorch architecture (GPU memory optimized)
 │       ├── quantization.py               # INT8 quantization utilities
+│       ├── dropout_handler.py            # Adaptive dropout handler logic
 │       └── utils.py                      # Data loading & helper utilities
 ├── .env                                  # Active environment config (ignored by git)
 ├── .env_example                          # Template for environment configuration
-├── requirements.txt                      # Python dependencies
+├── requirements.txt                      # Python dependencies (strict pinned versions)
 └── Dockerfile                            # Container configuration (optional)
 ```
 
@@ -56,6 +62,14 @@ Template: [**`.env_example`**]
 ```ini
 # Enable (1) or disable (0) INT8 Quantization during communication
 USE_QUANTIZATION=1
+
+# Enable (1) or disable (0) Differential Privacy (DP-SGD)
+USE_DP=0
+
+# DP Hyperparameters (Only active if USE_DP=1)
+DP_NOISE_MULTIPLIER=0.5
+DP_MAX_GRAD_NORM=1.5
+DP_DELTA=1e-5
 
 # Force training on CPU (1) or let it auto-detect GPU (0)
 FORCE_CPU=0
