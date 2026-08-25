@@ -47,7 +47,13 @@ print(f"Using device: {device}")
 # -------------------------------
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
-SUFFIX = "quantized" if USE_QUANTIZATION else "no_quantization"
+USE_DP = os.environ.get("USE_DP", "0") == "1"
+if USE_DP:
+    SUFFIX = "c_dp"
+elif USE_QUANTIZATION:
+    SUFFIX = "b_quantized"
+else:
+    SUFFIX = "a_pure"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -81,7 +87,7 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 
 REPORT_PATH = os.path.join(
     REPORTS_DIR,
-    f"classification_report_{SUFFIX}.txt"
+    f"classification_report_{SUFFIX}.md"
 )
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -347,10 +353,10 @@ report = classification_report(
 )
 
 with open(REPORT_PATH, "w") as f:
-    f.write("Chest X-ray Pneumonia Classification Report\n")
-    f.write("=" * 60)
-    f.write("\n\n")
+    f.write("# Chest X-ray Pneumonia Classification Report\n\n")
+    f.write("```text\n")
     f.write(report)
+    f.write("\n```\n")
 
 print("\nClassification Report")
 print("=" * 60)

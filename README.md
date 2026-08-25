@@ -51,7 +51,7 @@ Federated-Learning/
 
 We use a `.env` file to globally toggle training options without manually typing parameters in multiple client/server terminals.
 
-Template: [**`.env_example`**](file:///d:/Codes/College%20Projects/Major%20Project/Federated-Learning/.env_example)
+Template: [**`.env_example`**]
 
 ```ini
 # Enable (1) or disable (0) INT8 Quantization during communication
@@ -70,7 +70,7 @@ cp .env_example .env
 
 ## 📊 Dataset Splitter (`split_data.py`)
 
-The [**`split_data.py`**](file:///d:/Codes/College%20Projects/Major%20Project/Federated-Learning/federated_healthcare/split_data.py) script reads your raw Chest X-ray train dataset directory and distributes the files to simulate a **non-IID (Independent and Identically Distributed)** data environment representing realistic clinical distributions:
+The [**`split_data.py`**] script reads your raw Chest X-ray train dataset directory and distributes the files to simulate a **non-IID (Independent and Identically Distributed)** data environment representing realistic clinical distributions:
 
 * **Hospital A**: 1,000 NORMAL, 250 PNEUMONIA
 * **Hospital B**: 250 NORMAL, 1,000 PNEUMONIA
@@ -102,37 +102,40 @@ Open 4 separate terminal windows:
 
 * **Terminal 1: Server**
   ```bash
-  venv\Scripts\python.exe federated_healthcare\src\server.py
+  venv\Scripts\Activate.bat
+  set TARGET_CLIENTS=3&& set MIN_CLIENTS=2&& python federated_healthcare\src\server.py
+
   ```
 * **Terminal 2: Client A**
   ```bash
-  set CLIENT_NAME=Hospital_A
-  set DATA_PATH=data\hospital_A
-  venv\Scripts\python.exe federated_healthcare\src\client.py
+  venv\Scripts\Activate.bat
+  set DATA_PATH=.\data\hospital_A&& set CLIENT_NAME=Hospital_A&& python federated_healthcare\src\client.py
+
   ```
 * **Terminal 3: Client B**
   ```bash
-  set CLIENT_NAME=Hospital_B
-  set DATA_PATH=data\hospital_B
-  venv\Scripts\python.exe federated_healthcare\src\client.py
+  venv\Scripts\Activate.bat
+  set DATA_PATH=.\data\hospital_B&& set CLIENT_NAME=Hospital_B&& python federated_healthcare\src\client.py
+
   ```
 * **Terminal 4: Client C**
   ```bash
-  set CLIENT_NAME=Hospital_C
-  set DATA_PATH=data\hospital_C
-  venv\Scripts\python.exe federated_healthcare\src\client.py
+  venv\Scripts\Activate.bat
+  set DATA_PATH=.\data\hospital_C&& set CLIENT_NAME=Hospital_C&& python federated_healthcare\src\client.py
+
   ```
 
 ---
 
 ## 📈 Monitoring & Graphing
 
+(Not implemented yet)
 ### 1. Real-Time Streamlit Dashboard
 Launch the monitoring dashboard to observe training convergence in real-time:
 ```bash
 streamlit run federated_healthcare/dashboard/app.py
 ```
-
+(Continue from here)
 ### 2. Evaluating the Global Model
 Evaluate the final global model checkpoint against the test set:
 ```bash

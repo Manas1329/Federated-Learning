@@ -10,15 +10,20 @@ st.write("Monitoring global model optimization across 3 isolated hospital nodes.
 # Add run selection
 run_mode = st.selectbox(
     "Select Run Mode to Monitor",
-    ["No Quantization", "Quantized"]
+    ["Pure (FP32)", "Quantized (INT8)", "Quantized + DP"]
 )
 
-suffix = "no_quantization" if run_mode == "No Quantization" else "quantized"
-metrics_path = f"federated_healthcare/dashboard/results/metrics_{suffix}.csv"
+if run_mode == "Pure (FP32)":
+    suffix = "a_pure"
+elif run_mode == "Quantized (INT8)":
+    suffix = "b_quantized"
+else:
+    suffix = "c_dp"
+metrics_path = f"federated_healthcare/dashboard/results/{suffix}/metrics_{suffix}.csv"
 
 # Fallback for root execution
 if not os.path.exists(metrics_path):
-    metrics_path = f"dashboard/results/metrics_{suffix}.csv"
+    metrics_path = f"dashboard/results/{suffix}/metrics_{suffix}.csv"
 
 # Placeholder for real-time metric visualization
 chart_placeholder = st.empty()

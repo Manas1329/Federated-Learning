@@ -34,8 +34,15 @@ from dataclasses import replace
 # Paths & Config
 # --------------------------------------------------
 
+USE_DP = os.environ.get("USE_DP", "0") == "1"
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
-SUFFIX = "quantized" if USE_QUANTIZATION else "no_quantization"
+
+if USE_DP:
+    SUFFIX = "c_dp"
+elif USE_QUANTIZATION:
+    SUFFIX = "b_quantized"
+else:
+    SUFFIX = "a_pure"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -43,11 +50,7 @@ BASE_DIR = os.path.dirname(
     )
 )
 
-RESULTS_DIR = os.path.join(
-    BASE_DIR,
-    "dashboard",
-    "results"
-)
+RESULTS_DIR = os.path.join(BASE_DIR, "dashboard", "results", SUFFIX)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 METRICS_FILE = os.path.join(
@@ -472,36 +475,47 @@ def evaluate_metrics_aggregation_fn(metrics):
 
 if __name__ == "__main__":
 
+    import math
+    from dropout_handler import AdaptiveServer
+    
+    # Configure TARGET and MIN clients
+    TARGET_CLIENTS = int(os.environ.get("TARGET_CLIENTS", "3"))
+    MIN_CLIENTS = max(2, math.ceil(0.6 * TARGET_CLIENTS))
+
     strategy = SaveModelStrategy(
-
         fraction_fit=1.0,
-
         fraction_evaluate=1.0,
-
-        min_fit_clients=3,
-
-        min_evaluate_clients=3,
-
-        min_available_clients=3,
-
+        min_fit_clients=TARGET_CLIENTS,
+        min_evaluate_clients=MIN_CLIENTS,
+        min_available_clients=MIN_CLIENTS,
         evaluate_metrics_aggregation_fn=(
             evaluate_metrics_aggregation_fn
         ),
     )
 
-
-    print(
-        "Starting Flower Server..."
+    client_manager = fl.server.SimpleClientManager()
+    
+    server = AdaptiveServer(
+        client_manager=client_manager,
+        strategy=strategy,
+        target_clients=TARGET_CLIENTS,
+        min_clients=MIN_CLIENTS,
+        initial_grace_period=30.0,
+        max_grace_period=45.0,
+        round_timeout=300.0,
+        suffix=SUFFIX,
+        models_dir=MODEL_DIR
     )
 
+    print(
+        "Starting Adaptive Flower Server with Dropout Handling..."
+    )
 
     fl.server.start_server(
-
         server_address="0.0.0.0:8080",
-
+        server=server,
         config=fl.server.ServerConfig(
             num_rounds=10
         ),
-
-        strategy=strategy,
+        grpc_max_message_length=1024*1024*1024
     )
