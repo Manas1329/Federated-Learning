@@ -52,45 +52,114 @@ if has_data:
     plt.savefig(os.path.join(COMPARISONS_DIR, "loss_comparison.png"))
 plt.close()
 
+# # 3. Payload Size Bar Chart
+# plt.figure(figsize=(10, 6))
+# labels = []
+# payloads = []
+# for label, suffix in configs.items():
+#     # Load hospital CSVs
+#     results_dir = os.path.join(DASHBOARD_DIR, "results", suffix)
+#     total_payload = 0
+#     count = 0
+#     if os.path.exists(results_dir):
+#         for f in os.listdir(results_dir):
+#             if f.startswith("Hospital_") and f.endswith(".csv"):
+#                 # Read without header to avoid multi-index issues with jagged rows (15 cols vs 9 cols)
+#                 df = pd.read_csv(os.path.join(results_dir, f), header=None, skiprows=1)
+                
+#                 # Filter for training rows only (which have >9 columns)
+#                 if 10 in df.columns:
+#                     df_train = df[df[10].notna()]
+                    
+#                     # Col 5 = FP32 payload MB, Col 7 = INT8 payload MB
+#                     if "quantized" in suffix:
+#                         s = pd.to_numeric(df_train[7], errors='coerce')
+#                     else:
+#                         s = pd.to_numeric(df_train[5], errors='coerce')
+                        
+#                     mean_val = s.mean()
+#                     if pd.notna(mean_val):
+#                         total_payload += mean_val
+#                     count += 1
+#     if count > 0:
+#         labels.append(label)
+#         payloads.append(total_payload / count)
+
+# if labels:
+#     plt.bar(labels, payloads, color=['blue', 'orange', 'green'][:len(labels)])
+#     plt.title("Average Communication Payload per Client")
+#     plt.ylabel("Payload Size (MB)")
+#     plt.grid(axis='y')
+#     plt.savefig(os.path.join(COMPARISONS_DIR, "payload_comparison.png"))
+# plt.close()
 # 3. Payload Size Bar Chart
 plt.figure(figsize=(10, 6))
 labels = []
 payloads = []
+
 for label, suffix in configs.items():
-    # Load hospital CSVs
+    
     results_dir = os.path.join(DASHBOARD_DIR, "results", suffix)
     total_payload = 0
     count = 0
+
     if os.path.exists(results_dir):
         for f in os.listdir(results_dir):
+            
             if f.startswith("Hospital_") and f.endswith(".csv"):
-                # Read without header to avoid multi-index issues with jagged rows (15 cols vs 9 cols)
-                df = pd.read_csv(os.path.join(results_dir, f), header=None, skiprows=1)
-                
-                # Filter for training rows only (which have >9 columns)
+
+                df = pd.read_csv(
+                    os.path.join(results_dir, f),
+                    header=None,
+                    skiprows=1
+                )
+
+                # Filter training rows
                 if 10 in df.columns:
                     df_train = df[df[10].notna()]
-                    
-                    # Col 5 = FP32 payload MB, Col 7 = INT8 payload MB
-                    if "quantized" in suffix:
-                        s = pd.to_numeric(df_train[7], errors='coerce')
+
+                    # Col 5 = FP32 payload MB
+                    # Col 7 = INT8 payload MB
+                    if suffix in ["b_quantized", "c_dp"]:
+                        s = pd.to_numeric(
+                            df_train[7],
+                            errors='coerce'
+                        )
                     else:
-                        s = pd.to_numeric(df_train[5], errors='coerce')
-                        
+                        s = pd.to_numeric(
+                            df_train[5],
+                            errors='coerce'
+                        )
+
                     mean_val = s.mean()
+
                     if pd.notna(mean_val):
                         total_payload += mean_val
+
                     count += 1
+
     if count > 0:
         labels.append(label)
         payloads.append(total_payload / count)
 
+
 if labels:
-    plt.bar(labels, payloads, color=['blue', 'orange', 'green'][:len(labels)])
+    plt.bar(
+        labels,
+        payloads,
+        color=['blue', 'orange', 'green'][:len(labels)]
+    )
+
     plt.title("Average Communication Payload per Client")
     plt.ylabel("Payload Size (MB)")
     plt.grid(axis='y')
-    plt.savefig(os.path.join(COMPARISONS_DIR, "payload_comparison.png"))
-plt.close()
 
+    plt.savefig(
+        os.path.join(
+            COMPARISONS_DIR,
+            "payload_comparison.png"
+        )
+    )
+
+plt.close()
 print(f"Comparison graphs generated in {COMPARISONS_DIR}")
