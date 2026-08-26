@@ -1,6 +1,11 @@
-# Clinical Federated Learning with Dynamic INT8 Quantization
+# Clinical Federated Learning with Dynamic INT8 Quantization and DP-SGD
 
-An end-to-end framework implementing medical image classification (Pneumonia detection in Chest X-rays) using Federated Learning (FL). This project utilizes the **Flower FL framework** and simulates three isolated hospital nodes under a non-IID split. It incorporates dynamic **INT8 Quantization** to reduce the communication payload size by **75%** while retaining high performance.
+An end-to-end framework implementing medical image classification (Pneumonia detection in Chest X-rays) using Federated Learning (FL). This project utilizes the **Flower FL framework** and simulates three isolated hospital nodes under a non-IID split. 
+
+Key Features:
+* **Dynamic INT8 Quantization:** Reduces communication payload size by **75%** while retaining high performance.
+* **Differential Privacy (DP-SGD):** Leverages PyTorch **Opacus** to enforce strict mathematical privacy bounds across federated clients without resetting privacy budgets across rounds.
+* **Adaptive Dropout Handling:** Server dynamically manages timeouts and grace periods depending on whether computationally heavy DP-SGD is enabled.
 
 ---
 
@@ -32,16 +37,17 @@ Federated-Learning/
 │   ├── models/                           # PyTorch model checkpoints
 │   ├── split_data.py                     # Non-IID dataset splitter utility
 │   └── src/                              # Source code directory
-│       ├── client.py                     # FL client implementation
-│       ├── server.py                     # FL server implementation
+│       ├── client.py                     # FL client implementation (DP-SGD + INT8)
+│       ├── server.py                     # FL server implementation (Adaptive Timeouts)
 │       ├── evaluate.py                   # Global evaluation script
 │       ├── graph.py                      # Chart & metrics compiler script
-│       ├── model.py                      # ChestCNN PyTorch architecture
+│       ├── model.py                      # ChestCNN PyTorch architecture (GPU memory optimized)
 │       ├── quantization.py               # INT8 quantization utilities
+│       ├── dropout_handler.py            # Adaptive dropout handler logic
 │       └── utils.py                      # Data loading & helper utilities
 ├── .env                                  # Active environment config (ignored by git)
 ├── .env_example                          # Template for environment configuration
-├── requirements.txt                      # Python dependencies
+├── requirements.txt                      # Python dependencies (strict pinned versions)
 └── Dockerfile                            # Container configuration (optional)
 ```
 
@@ -51,11 +57,19 @@ Federated-Learning/
 
 We use a `.env` file to globally toggle training options without manually typing parameters in multiple client/server terminals.
 
-Template: [**`.env_example`**](file:///d:/Codes/College%20Projects/Major%20Project/Federated-Learning/.env_example)
+Template: [**`.env_example`**]
 
 ```ini
 # Enable (1) or disable (0) INT8 Quantization during communication
 USE_QUANTIZATION=1
+
+# Enable (1) or disable (0) Differential Privacy (DP-SGD)
+USE_DP=0
+
+# DP Hyperparameters (Only active if USE_DP=1)
+DP_NOISE_MULTIPLIER=0.5
+DP_MAX_GRAD_NORM=1.5
+DP_DELTA=1e-5
 
 # Force training on CPU (1) or let it auto-detect GPU (0)
 FORCE_CPU=0
@@ -70,7 +84,7 @@ cp .env_example .env
 
 ## 📊 Dataset Splitter (`split_data.py`)
 
-The [**`split_data.py`**](file:///d:/Codes/College%20Projects/Major%20Project/Federated-Learning/federated_healthcare/split_data.py) script reads your raw Chest X-ray train dataset directory and distributes the files to simulate a **non-IID (Independent and Identically Distributed)** data environment representing realistic clinical distributions:
+The [**`split_data.py`**] script reads your raw Chest X-ray train dataset directory and distributes the files to simulate a **non-IID (Independent and Identically Distributed)** data environment representing realistic clinical distributions:
 
 * **Hospital A**: 1,000 NORMAL, 250 PNEUMONIA
 * **Hospital B**: 250 NORMAL, 1,000 PNEUMONIA
@@ -102,37 +116,40 @@ Open 4 separate terminal windows:
 
 * **Terminal 1: Server**
   ```bash
-  venv\Scripts\python.exe federated_healthcare\src\server.py
+  venv\Scripts\Activate.bat
+  set TARGET_CLIENTS=3&& set MIN_CLIENTS=2&& python federated_healthcare\src\server.py
+
   ```
 * **Terminal 2: Client A**
   ```bash
-  set CLIENT_NAME=Hospital_A
-  set DATA_PATH=data\hospital_A
-  venv\Scripts\python.exe federated_healthcare\src\client.py
+  venv\Scripts\Activate.bat
+  set DATA_PATH=.\data\hospital_A&& set CLIENT_NAME=Hospital_A&& python federated_healthcare\src\client.py
+
   ```
 * **Terminal 3: Client B**
   ```bash
-  set CLIENT_NAME=Hospital_B
-  set DATA_PATH=data\hospital_B
-  venv\Scripts\python.exe federated_healthcare\src\client.py
+  venv\Scripts\Activate.bat
+  set DATA_PATH=.\data\hospital_B&& set CLIENT_NAME=Hospital_B&& python federated_healthcare\src\client.py
+
   ```
 * **Terminal 4: Client C**
   ```bash
-  set CLIENT_NAME=Hospital_C
-  set DATA_PATH=data\hospital_C
-  venv\Scripts\python.exe federated_healthcare\src\client.py
+  venv\Scripts\Activate.bat
+  set DATA_PATH=.\data\hospital_C&& set CLIENT_NAME=Hospital_C&& python federated_healthcare\src\client.py
+
   ```
 
 ---
 
 ## 📈 Monitoring & Graphing
 
+(Not implemented yet)
 ### 1. Real-Time Streamlit Dashboard
 Launch the monitoring dashboard to observe training convergence in real-time:
 ```bash
 streamlit run federated_healthcare/dashboard/app.py
 ```
-
+(Continue from here)
 ### 2. Evaluating the Global Model
 Evaluate the final global model checkpoint against the test set:
 ```bash
