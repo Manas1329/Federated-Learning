@@ -113,12 +113,16 @@ print("Global model loaded successfully.")
 # Load Test Data
 # -------------------------------
 
+# DATA_PATH = os.path.join(
+#     os.path.dirname(BASE_DIR),
+#     "data",
+#     "hospital_A"
+# )
 DATA_PATH = os.path.join(
-    os.path.dirname(BASE_DIR),
+    BASE_DIR,
     "data",
     "hospital_A"
 )
-
 _, testloader = load_hospital_data(DATA_PATH)
 
 print("Test dataset loaded.")

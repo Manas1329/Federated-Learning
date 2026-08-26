@@ -1,0 +1,4 @@
+Timestamp,Model_Name,Participating_Clients,Num_Participating,Num_Dropped,Target_Clients,Min_Clients,Final_Round_Time_Sec,Weight_L2_Norms
+2026-08-26 15:23:02,global_model_c_dp,Hospital_C|Hospital_B|Hospital_A,3,0,3,2,138.76382179999928,"[3.5125, 7.3324, 120.4911, 1.1162]"
+2026-08-26 17:35:25,global_model_a_pure,Hospital_C|Hospital_B|Hospital_A,3,0,3,2,33.233312000000296,"[3.3316, 6.0162, 26.0706, 0.8561]"
+2026-08-26 17:44:57,global_model_b_quantized,Hospital_C|Hospital_B|Hospital_A,3,0,3,2,32.90582880000056,"[3.2506, 5.6358, 29.8418, 0.8532]"
