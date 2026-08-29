@@ -7,12 +7,15 @@ from utils import load_hospital_data
 # -------------------------------
 # Paths & Config
 # -------------------------------
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_PATH = os.path.join(BASE_DIR, "data", "hospital_A")
-MODEL_DIR = os.path.join(BASE_DIR, "federated_healthcare", "models")
-MODEL_PATH = os.path.join(MODEL_DIR, "local_model_hospital_A.pth")
+from pathlib import Path
+import sys
+# Ensure 'src' package is importable regardless of where the script is run from
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-os.makedirs(MODEL_DIR, exist_ok=True)
+from paths import resolve_data_path, MODELS_DIR
+
+DATA_PATH = resolve_data_path(os.environ.get("DATA_PATH"), "Hospital_A")
+MODEL_PATH = MODELS_DIR / "local_model_hospital_A.pth"
 
 # -------------------------------
 # Device

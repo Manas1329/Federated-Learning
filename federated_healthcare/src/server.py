@@ -44,39 +44,20 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(
-        os.path.abspath(__file__)
-    )
-)
+from pathlib import Path
+import sys
+# Ensure 'src' package is importable regardless of where the script is run from
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-RESULTS_DIR = os.path.join(BASE_DIR, "dashboard", "results", SUFFIX)
-os.makedirs(RESULTS_DIR, exist_ok=True)
+from paths import RESULTS_DIR, MODELS_DIR
 
-METRICS_FILE = os.path.join(
-    RESULTS_DIR,
-    f"metrics_{SUFFIX}.csv"
-)
+RESULTS_DIR_SUFFIX = RESULTS_DIR / SUFFIX
+RESULTS_DIR_SUFFIX.mkdir(parents=True, exist_ok=True)
 
-ROUND_METRICS_FILE = os.path.join(
-    RESULTS_DIR,
-    f"round_metrics_{SUFFIX}.csv"
-)
-
-MODEL_DIR = os.path.join(
-    BASE_DIR,
-    "models"
-)
-
-os.makedirs(
-    MODEL_DIR,
-    exist_ok=True
-)
-
-MODEL_PATH = os.path.join(
-    MODEL_DIR,
-    f"global_model_{SUFFIX}.pth"
-)
+METRICS_FILE = RESULTS_DIR_SUFFIX / f"metrics_{SUFFIX}.csv"
+ROUND_METRICS_FILE = RESULTS_DIR_SUFFIX / f"round_metrics_{SUFFIX}.csv"
+MODEL_DIR = MODELS_DIR
+MODEL_PATH = MODEL_DIR / f"global_model_{SUFFIX}.pth"
 
 
 # --------------------------------------------------

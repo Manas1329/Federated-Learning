@@ -61,6 +61,8 @@ import torch
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
+from pathlib import Path
+
 def load_hospital_data(data_path, batch_size=32, img_size=128):
     """
     Load chest X-ray images from hospital-specific folder structure.
@@ -75,7 +77,7 @@ def load_hospital_data(data_path, batch_size=32, img_size=128):
         trainloader, testloader (DataLoader objects)
     """
 
-    train_path = os.path.join(data_path, "train")
+    train_path = Path(data_path) / "train"
 
     transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),

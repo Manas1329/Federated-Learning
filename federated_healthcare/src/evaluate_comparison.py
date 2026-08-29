@@ -9,7 +9,12 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 # -------------------------------
 # Paths & Config
 # -------------------------------
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pathlib import Path
+import sys
+# Ensure 'src' package is importable regardless of where the script is run from
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from paths import DATA_DIR, MODELS_DIR, PLOTS_DIR
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 USE_DP = os.environ.get("USE_DP", "0") == "1"
@@ -20,11 +25,11 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
-LOCAL_MODEL_PATH = os.path.join(BASE_DIR, "federated_healthcare", "models", "local_model_hospital_A.pth")
-GLOBAL_MODEL_PATH = os.path.join(BASE_DIR, "federated_healthcare", "models", f"global_model_{SUFFIX}.pth")
-OUTPUT_DIR = os.path.join(BASE_DIR, "federated_healthcare", "dashboard", "plots", "comparisons")
+LOCAL_MODEL_PATH = MODELS_DIR / "local_model_hospital_A.pth"
+GLOBAL_MODEL_PATH = MODELS_DIR / f"global_model_{SUFFIX}.pth"
+OUTPUT_DIR = PLOTS_DIR / "comparisons" / "non_iid"
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # -------------------------------
 # Device
@@ -94,7 +99,7 @@ def run_comparison():
     hosp_b_data = {}
 
     for hosp in hospitals:
-        data_path = os.path.join(BASE_DIR, "data", hosp)
+        data_path = DATA_DIR / hosp
         _, testloader = load_hospital_data(data_path, batch_size=32)
         
         print(f"\nEvaluating on {hosp} test set...")
@@ -125,7 +130,11 @@ def run_comparison():
     ax.set_xticks(x)
     ax.set_xticklabels(['Hospital A\n(Skewed Normal)', 'Hospital B\n(Skewed Pneumonia)', 'Hospital C\n(Balanced)'], fontsize=11)
     ax.legend(fontsize=11)
-    ax.set_ylim(0, 110)
+    min_acc = min(min(local_metrics["accuracy"], default=0), min(global_metrics["accuracy"], default=0))
+    max_acc = max(max(local_metrics["accuracy"], default=0), max(global_metrics["accuracy"], default=0))
+    y_bottom_acc = max(0.0, min_acc - 5)
+    y_top_acc = max_acc + max(3, (max_acc - y_bottom_acc) * 0.1)
+    ax.set_ylim(bottom=y_bottom_acc, top=y_top_acc)
 
     for rects in [rects1, rects2]:
         for rect in rects:
@@ -147,7 +156,11 @@ def run_comparison():
     ax.set_xticks(x)
     ax.set_xticklabels(['Hospital A\n(Skewed Normal)', 'Hospital B\n(Skewed Pneumonia)', 'Hospital C\n(Balanced)'], fontsize=11)
     ax.legend(fontsize=11)
-    ax.set_ylim(0, 110)
+    min_f1 = min(min(local_metrics["f1"], default=0), min(global_metrics["f1"], default=0))
+    max_f1 = max(max(local_metrics["f1"], default=0), max(global_metrics["f1"], default=0))
+    y_bottom_f1 = max(0.0, min_f1 - 5)
+    y_top_f1 = max_f1 + max(3, (max_f1 - y_bottom_f1) * 0.1)
+    ax.set_ylim(bottom=y_bottom_f1, top=y_top_f1)
 
     for rects in [rects1, rects2]:
         for rect in rects:

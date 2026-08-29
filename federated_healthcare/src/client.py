@@ -24,18 +24,27 @@ if os.path.exists(".env"):
                     os.environ[k] = val.strip()
 
 
+from pathlib import Path
+import sys
+
 # Ensure 'src' package is importable regardless of where the script is run from
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from paths import resolve_data_path, RESULTS_DIR
 
 # --------------------------------------------------
 # Configuration
 # --------------------------------------------------
 
-DATA_PATH = os.environ.get("DATA_PATH", "./data/hospital_A")
-SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
-
 # Get hospital/client name from environment
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Hospital_A")
+
+DATA_PATH = resolve_data_path(
+    os.environ.get("DATA_PATH"),
+    CLIENT_NAME
+)
+
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 
@@ -72,12 +81,9 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-
-RESULTS_DIR = os.path.join(os.path.dirname(SRC_DIR), "dashboard", "results", SUFFIX)
-
-os.makedirs(RESULTS_DIR, exist_ok=True)
-CSV_FILE = os.path.join(RESULTS_DIR, f"{CLIENT_NAME}_{SUFFIX}.csv")
+RESULTS_DIR_SUFFIX = RESULTS_DIR / SUFFIX
+RESULTS_DIR_SUFFIX.mkdir(parents=True, exist_ok=True)
+CSV_FILE = RESULTS_DIR_SUFFIX / f"{CLIENT_NAME}_{SUFFIX}.csv"
 
 
 # --------------------------------------------------
