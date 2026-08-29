@@ -567,6 +567,7 @@ class HospitalClient(fl.client.NumPyClient):
     # --------------------------------------------------
 
     def evaluate(self, parameters, config):
+        from sklearn.metrics import precision_score, recall_score, f1_score
 
         self.set_parameters(parameters)
 
@@ -574,9 +575,42 @@ class HospitalClient(fl.client.NumPyClient):
 
         evaluation_start = time.perf_counter()
 
+        # Run standard loss/accuracy test
         loss, accuracy = test(
             net,
             testloader
+        )
+
+        # --------------------------------------------------
+        # Collect predictions for F1 / Precision / Recall
+        # --------------------------------------------------
+        net.eval()
+        all_labels = []
+        all_predictions = []
+        with torch.no_grad():
+            for images, labels in testloader:
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = net(images)
+                _, predicted = torch.max(outputs, 1)
+                all_labels.extend(labels.cpu().numpy())
+                all_predictions.extend(predicted.cpu().numpy())
+
+        import numpy as np
+        all_labels = np.array(all_labels)
+        all_predictions = np.array(all_predictions)
+
+        precision = precision_score(
+            all_labels, all_predictions,
+            average="binary", zero_division=0
+        )
+        recall = recall_score(
+            all_labels, all_predictions,
+            average="binary", zero_division=0
+        )
+        f1 = f1_score(
+            all_labels, all_predictions,
+            average="binary", zero_division=0
         )
 
         evaluation_time = (
@@ -586,10 +620,12 @@ class HospitalClient(fl.client.NumPyClient):
 
         print(
             f"[{CLIENT_NAME}] "
-            f"Round {round_number} "
-            f"Evaluation -> "
+            f"Round {round_number} Evaluation -> "
             f"Loss: {loss:.4f}, "
-            f"Accuracy: {accuracy:.4f}"
+            f"Accuracy: {accuracy:.4f}, "
+            f"F1: {f1:.4f}, "
+            f"Precision: {precision:.4f}, "
+            f"Recall: {recall:.4f}"
         )
 
         # Save evaluation result
@@ -613,9 +649,12 @@ class HospitalClient(fl.client.NumPyClient):
             float(loss),
             len(testloader.dataset),
             {
-                "accuracy": float(accuracy),
-                "loss": float(loss),
-                "evaluation_time": float(evaluation_time)
+                "accuracy":         float(accuracy),
+                "loss":             float(loss),
+                "f1":               float(f1),
+                "precision":        float(precision),
+                "recall":           float(recall),
+                "evaluation_time":  float(evaluation_time)
             }
         )
 
