@@ -390,7 +390,6 @@ def evaluate_metrics_aggregation_fn(metrics):
         in metrics
     )
 
-
     weighted_accuracy = (
         sum(
             num_examples * m["accuracy"]
@@ -398,7 +397,6 @@ def evaluate_metrics_aggregation_fn(metrics):
         )
         / total_examples
     )
-
 
     weighted_loss = (
         sum(
@@ -408,25 +406,43 @@ def evaluate_metrics_aggregation_fn(metrics):
         / total_examples
     )
 
+    # --------------------------------------------------
+    # Weighted F1 / Precision / Recall (if clients sent them)
+    # --------------------------------------------------
+
+    has_f1 = all("f1" in m for _, m in metrics)
+
+    if has_f1:
+        weighted_f1 = (
+            sum(num_examples * m["f1"] for num_examples, m in metrics)
+            / total_examples
+        )
+        weighted_precision = (
+            sum(num_examples * m["precision"] for num_examples, m in metrics)
+            / total_examples
+        )
+        weighted_recall = (
+            sum(num_examples * m["recall"] for num_examples, m in metrics)
+            / total_examples
+        )
+    else:
+        weighted_f1 = 0.0
+        weighted_precision = 0.0
+        weighted_recall = 0.0
 
     # --------------------------------------------------
-    # Save accuracy/loss
+    # Determine round number for CSV
     # --------------------------------------------------
 
     if os.path.exists(METRICS_FILE):
-
-        df_old = pd.read_csv(
-            METRICS_FILE
-        )
-
-        next_round = (
-            len(df_old) + 1
-        )
-
+        df_old = pd.read_csv(METRICS_FILE)
+        next_round = len(df_old) + 1
     else:
-
         next_round = 1
 
+    # --------------------------------------------------
+    # Save accuracy / loss
+    # --------------------------------------------------
 
     df = pd.DataFrame(
         [[
@@ -441,32 +457,40 @@ def evaluate_metrics_aggregation_fn(metrics):
         ]
     )
 
-
     df.to_csv(
         METRICS_FILE,
         mode="a",
-        header=not os.path.exists(
-            METRICS_FILE
-        ),
+        header=not os.path.exists(METRICS_FILE),
         index=False
     )
 
+    # --------------------------------------------------
+    # Demo-friendly round results banner
+    # --------------------------------------------------
 
-    print(
-        f"Global Accuracy: "
-        f"{weighted_accuracy:.4f}"
-    )
-
-    print(
-        f"Global Loss: "
-        f"{weighted_loss:.4f}"
-    )
-
+    print("\n")
+    print("=" * 56)
+    print(f"  GLOBAL ROUND {next_round} RESULTS")
+    print("=" * 56)
+    print(f"  Clients Evaluated   : {len(metrics)}")
+    print(f"  Global Accuracy     : {weighted_accuracy * 100:.2f}%")
+    print(f"  Global Loss         : {weighted_loss:.4f}")
+    if has_f1:
+        print(f"  F1 Score            : {weighted_f1:.4f}")
+        print(f"  Precision           : {weighted_precision:.4f}")
+        print(f"  Recall              : {weighted_recall:.4f}")
+    else:
+        print("  F1 / Precision / Recall : N/A (metrics not returned by clients)")
+    print("=" * 56)
 
     return {
-        "accuracy": weighted_accuracy,
-        "loss": weighted_loss,
+        "accuracy":  weighted_accuracy,
+        "loss":      weighted_loss,
+        "f1":        weighted_f1,
+        "precision": weighted_precision,
+        "recall":    weighted_recall,
     }
+
 
 
 # --------------------------------------------------
