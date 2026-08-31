@@ -238,6 +238,30 @@ class HospitalClient(fl.client.NumPyClient):
         print(f"[{CLIENT_NAME}] Federated Round {round_number}")
         print("=" * 60)
 
+        # ----------------------------------------------------------
+        # Display own trust status from previous round (server-injected)
+        # Each client sees ONLY its own status, not other hospitals'
+        # ----------------------------------------------------------
+        _trust_score = config.get("trust_score")
+        if _trust_score is not None:
+            _TAG_EMOJI = {"TRUSTED": "🟢", "SUSPICIOUS": "🟡", "UNTRUSTED": "🔴"}
+            _tag       = config.get("trust_tag", "TRUSTED")
+            _emoji     = _TAG_EMOJI.get(_tag, "")
+            print()
+            print("=" * 52)
+            _header = f"{CLIENT_NAME} - CLIENT TRUST STATUS (Round {round_number})"
+            print(f"  {_header}")
+            print("=" * 52)
+            print(f"  {'Update Behaviour':<22}: {config.get('trust_update',      0.0):.1f} / 100")
+            print(f"  {'Training Behaviour':<22}: {config.get('trust_training',  0.0):.1f} / 100")
+            print(f"  {'Historical Trust':<22}: {config.get('trust_history',     0.0):.1f} / 100")
+            print(f"  {'Participation':<22}: {config.get('trust_reliability', 0.0):.1f} / 100")
+            print(f"  {'-' * 38}")
+            print(f"  {'Final Trust Score':<22}: {_trust_score:.1f} / 100")
+            print(f"  {'Client Tag':<22}: {_emoji} {_tag}")
+            print("=" * 52)
+            print()
+
         # ============================================================
         # TOTAL TRAINING TIMER
         # ============================================================
@@ -648,7 +672,10 @@ class HospitalClient(fl.client.NumPyClient):
                 "f1":               float(f1),
                 "precision":        float(precision),
                 "recall":           float(recall),
-                "evaluation_time":  float(evaluation_time)
+                "evaluation_time":  float(evaluation_time),
+                # client_name is required by the server's trust module
+                # to correctly attribute evaluation metrics to this hospital
+                "client_name":      str(CLIENT_NAME),
             }
         )
 

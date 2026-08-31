@@ -101,6 +101,7 @@ _csv_last_round_seen  = 0
 _csv_last_client_rows = {}   # {client_name: row_count}
 _fl_process: Optional[subprocess.Popen] = None
 _last_broadcast_version = -1
+_trust_csv_last_rows = 0    # rows already read from trust CSV
 
 
 def _get_results_info():
@@ -153,8 +154,15 @@ def _poll_csv_metrics():
                     ds.LIVE_STATE["performance_history"] = history
                     ds.LIVE_STATE["latest_metrics"]["accuracy"] = latest["accuracy"]
                     ds.LIVE_STATE["latest_metrics"]["loss"]     = latest["loss"]
-                    ds.LIVE_STATE["training_status"] = "Training"
                     ds.LIVE_STATE["current_round"]   = latest["round"]
+
+                    # Check if all rounds are completed
+                    total_r = ds.LIVE_STATE.get("total_rounds", 5)
+                    if latest["round"] >= total_r:
+                        ds.LIVE_STATE["training_status"] = "Completed"
+                    else:
+                        ds.LIVE_STATE["training_status"] = "Training"
+
                     ds._bump_version()
                     ds.write_state_file()
 
@@ -164,6 +172,8 @@ def _poll_csv_metrics():
                         f"Accuracy: {r['accuracy']}%  Loss: {r['loss']}",
                         "aggregation",
                     )
+                if latest["round"] >= ds.LIVE_STATE.get("total_rounds", 5):
+                    ds.add_event("All federated training rounds completed successfully!", "success")
                 _csv_last_round_seen = len(df)
     except Exception:
         pass
@@ -311,10 +321,67 @@ async def _state_broadcaster():
         # Always poll CSVs as fallback (works with plain server.py too)
         _poll_csv_metrics()
 
+        # Poll trust CSV written by trust_manager
+        _poll_trust_csv()
+
         # Broadcast if state changed
         if manager.active and ds.LIVE_STATE["version"] != _last_broadcast_version:
             _last_broadcast_version = ds.LIVE_STATE["version"]
             await manager.broadcast(ds.LIVE_STATE)
+
+
+# ============================================================
+# Trust CSV polling
+# ============================================================
+
+def _poll_trust_csv():
+    """
+    Poll the trust_{suffix}.csv file written by trust_manager.py.
+    Updates LIVE_STATE['trust_data'] so the frontend always has real values.
+    Works whether training was started via dashboard or direct terminal command.
+    """
+    global _trust_csv_last_rows
+    if not _PANDAS_OK:
+        return
+    try:
+        suffix, results_dir = _get_results_info()
+        trust_csv = results_dir / f"trust_{suffix}.csv"
+        if not trust_csv.exists():
+            return
+
+        df = pd.read_csv(trust_csv)
+        if len(df) == _trust_csv_last_rows:
+            return  # nothing new
+        _trust_csv_last_rows = len(df)
+
+        # Build trust_data dict from CSV (latest row per client)
+        trust_data = {}
+        for client_name, group in df.groupby("Client"):
+            # Build history list: [[round, score, tag], ...]
+            history = [
+                [int(row["Round"]), float(row["TrustScore"]), str(row["Tag"])]
+                for _, row in group.iterrows()
+            ]
+            latest = group.iloc[-1]
+            trust_data[client_name] = {
+                "client_id":         client_name,
+                "round":             int(latest["Round"]),
+                "update_score":      round(float(latest["UpdateScore"]),      1),
+                "training_score":    round(float(latest["TrainingScore"]),    1),
+                "historical_score":  round(float(latest["HistoricalScore"]),  1),
+                "reliability_score": round(float(latest["ReliabilityScore"]), 1),
+                "trust_score":       round(float(latest["TrustScore"]),       1),
+                "tag":               str(latest["Tag"]),
+                "history":           history,
+            }
+
+        with ds._lock:
+            ds.LIVE_STATE["trust_data"] = trust_data
+            ds._bump_version()
+            ds.write_state_file()
+
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -396,7 +463,8 @@ async def start_training(
 ):
     global _fl_process
 
-    if ds.LIVE_STATE["training_status"] in ("Training", "Waiting"):
+    # Only block if an active dashboard-spawned subprocess is genuinely running
+    if _fl_process is not None and _fl_process.poll() is None:
         raise HTTPException(
             status_code=409,
             detail="Training is already running. Stop or reset first.",
@@ -472,26 +540,45 @@ def _parse_log_line(line: str):
 @app.post("/api/training/stop")
 async def stop_training():
     global _fl_process
-    if _fl_process is None or _fl_process.poll() is not None:
-        return {"status": "not_running"}
 
-    try:
-        _fl_process.terminate()
-        await asyncio.sleep(2)
-        if _fl_process.poll() is None:
-            _fl_process.kill()
-        _fl_process = None
+    # Case 1: Training started via dashboard button — we have a process handle
+    if _fl_process is not None and _fl_process.poll() is None:
+        try:
+            _fl_process.terminate()
+            await asyncio.sleep(2)
+            if _fl_process.poll() is None:
+                _fl_process.kill()
+            _fl_process = None
 
+            with ds._lock:
+                ds.LIVE_STATE["training_status"] = "Stopped"
+                ds.LIVE_STATE["server_pid"]      = None
+                ds._bump_version()
+                ds.write_state_file()
+
+            ds.add_event("Training stopped by admin", "warn")
+            return {"status": "stopped"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # Case 2: Training was started externally (terminal) — no process handle.
+    # We can't kill the external process, but we CAN reset the dashboard state
+    # so the UI is unblocked and the user can reset.
+    current_status = ds.LIVE_STATE.get("training_status", "Ready")
+    if current_status in ("Training", "Waiting"):
         with ds._lock:
             ds.LIVE_STATE["training_status"] = "Stopped"
             ds.LIVE_STATE["server_pid"]      = None
             ds._bump_version()
             ds.write_state_file()
+        ds.add_event(
+            "Dashboard marked as Stopped (training was running externally via terminal)",
+            "warn"
+        )
+        return {"status": "stopped", "note": "External process — only dashboard state cleared"}
 
-        ds.add_event("Training stopped by admin", "warn")
-        return {"status": "stopped"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Not running at all
+    return {"status": "not_running"}
 
 
 @app.post("/api/training/reset")

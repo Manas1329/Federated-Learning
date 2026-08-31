@@ -123,6 +123,11 @@ LIVE_STATE: Dict[str, Any] = {
     # Server process PID (set by dashboard_api when it spawns the subprocess)
     "server_pid": None,
 
+    # Trust / Tagging data (populated by trust_manager after each round)
+    # Format: {client_name: {trust_score, tag, update_score, training_score,
+    #                        historical_score, reliability_score, round, history}}
+    "trust_data": {},
+
     # State version — incremented on every change so WebSocket can detect updates
     "version": 0,
     "last_updated": _now_str(),
@@ -416,9 +421,11 @@ def reset_state():
             },
             "events":     [],
             "server_pid": None,
+            "trust_data": {},   # Clear trust scores on reset
         })
         _bump_version()
         write_state_file()
+
 
 
 # Write initial state on module load

@@ -4,6 +4,15 @@ import time
 import pandas as pd
 import torch
 
+# Trust / Tagging Module (Phase 1)
+# Wrapped in try/except: if import fails, training continues normally
+try:
+    from trust_manager import trust_manager as _tm
+    _TRUST_OK = True
+except Exception as _te:
+    _TRUST_OK = False
+    print(f"[TrustManager] Import warning: {_te}")
+
 # Load environment variables from .env file if present
 if os.path.exists(".env"):
     with open(".env") as f:
@@ -118,27 +127,40 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         print(f"Starting Federated Round {server_round}")
         print("=" * 60)
 
-        # Send round number to clients
-        config = {
-            "server_round": server_round
-        }
+        # Store global params for trust update-norm computation
+        if _TRUST_OK:
+            try:
+                _tm.set_global_params(parameters_to_ndarrays(parameters))
+            except Exception:
+                pass
 
-        # Get normal Flower configuration
-        fit_ins = fl.common.FitIns(
-            parameters,
-            config
-        )
+        base_config = {"server_round": server_round}
 
-        # Select clients using client_manager passed directly into function
+        # Select clients
         clients = client_manager.sample(
             num_clients=self.min_fit_clients,
             min_num_clients=self.min_fit_clients
         )
 
-        return [
-            (client, fit_ins)
-            for client in clients
-        ]
+        # Build per-client FitIns — inject previous-round trust score if available
+        result = []
+        for client in clients:
+            config = dict(base_config)
+            if _TRUST_OK:
+                try:
+                    trust_info = _tm.get_trust_for_cid(client.cid)
+                    if trust_info:
+                        config["trust_score"]       = float(trust_info["trust_score"])
+                        config["trust_tag"]         = str(trust_info["tag"])
+                        config["trust_update"]      = float(trust_info["update_score"])
+                        config["trust_training"]    = float(trust_info["training_score"])
+                        config["trust_history"]     = float(trust_info["historical_score"])
+                        config["trust_reliability"] = float(trust_info["reliability_score"])
+                except Exception:
+                    pass
+            result.append((client, fl.common.FitIns(parameters, config)))
+
+        return result
 
     def configure_evaluate(
         self,
@@ -219,6 +241,24 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                     )
         else:
             dequantized_results = results
+
+        # ==========================================================
+        # TRUST MODULE: record update behaviour per client
+        # Wrapped in try/except — FL training continues even if this fails
+        # ==========================================================
+        if _TRUST_OK:
+            try:
+                for _cp, _fit_res in dequantized_results:
+                    _cname   = _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
+                    _cndarrs = parameters_to_ndarrays(_fit_res.parameters)
+                    _tm.record_update(_cname, _cndarrs, _cp.cid, _fit_res.metrics)
+                for _fail in failures:
+                    if isinstance(_fail, tuple) and len(_fail) >= 1:
+                        _fail_cp = _fail[0]
+                        if hasattr(_fail_cp, "cid"):
+                            _tm.record_dropout(_fail_cp.cid)
+            except Exception as _e:
+                print(f"[TrustManager] aggregate_fit warning: {_e}")
 
         # ==========================================================
         # FEDAVG
@@ -482,6 +522,29 @@ def evaluate_metrics_aggregation_fn(metrics):
     else:
         print("  F1 / Precision / Recall : N/A (metrics not returned by clients)")
     print("=" * 56)
+
+    # ==========================================================
+    # TRUST MODULE: record evaluation and finalise trust scores
+    # Wrapped in try/except — does NOT affect FL accuracy/loss return
+    # ==========================================================
+    if _TRUST_OK:
+        try:
+            for _num_ex, _m in metrics:
+                _cname = _m.get("client_name", "Unknown")
+                if _cname == "Unknown":
+                    continue
+                _tm.record_evaluation(
+                    client_name  = _cname,
+                    accuracy     = float(_m.get("accuracy",  0.0)),
+                    loss         = float(_m.get("loss",      0.0)),
+                    f1           = float(_m.get("f1",        0.0)),
+                    precision    = float(_m.get("precision", 0.0)),
+                    recall       = float(_m.get("recall",    0.0)),
+                    num_examples = int(_num_ex),
+                )
+            _tm.finalize_round(next_round)
+        except Exception as _e:
+            print(f"[TrustManager] evaluate_metrics warning: {_e}")
 
     return {
         "accuracy":  weighted_accuracy,

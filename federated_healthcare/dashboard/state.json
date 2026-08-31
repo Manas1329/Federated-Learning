@@ -1,0 +1,49 @@
+{
+  "training_status": "Stopped",
+  "current_round": 0,
+  "total_rounds": 5,
+  "connected_clients": [],
+  "client_details": {},
+  "performance_history": [],
+  "latest_metrics": {
+    "accuracy": 0.0,
+    "loss": 0.0,
+    "f1": 0.0,
+    "precision": 0.0,
+    "recall": 0.0
+  },
+  "update_stats": {
+    "total_updates_received": 0,
+    "updates_this_round": 0,
+    "avg_update_size_raw_mb": 0.0,
+    "avg_update_size_quant_mb": 0.0,
+    "compression_ratio": 0.0,
+    "dp_epsilon_avg": 0.0
+  },
+  "dropout_info": {
+    "expected_clients": 3,
+    "active_clients": 3,
+    "dropped_clients": 0,
+    "minimum_required": 2,
+    "overall_status": "all_active"
+  },
+  "events": [
+    {
+      "id": 1788162304681,
+      "time": "01:15:04 PM",
+      "message": "Dashboard marked as Stopped (training was running externally via terminal)",
+      "type": "warn"
+    }
+  ],
+  "config": {
+    "use_quantization": true,
+    "use_dp": false,
+    "target_clients": 3,
+    "min_clients": 2,
+    "fl_port": 8080
+  },
+  "server_pid": null,
+  "trust_data": {},
+  "version": 29,
+  "last_updated": "01:15:04 PM"
+}
