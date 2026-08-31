@@ -336,5 +336,47 @@ class TestDropoutEngine(unittest.TestCase):
         self.assertEqual(self.engine.active_clients["E"], ClientState.ACTIVE)
         self.assertEqual(self.engine._get_profile("E").network_failures, 1)
 
+    def test_26_hard_deadline_and_round_timeout_are_independent(self):
+        """TEST 26: Hard deadline and round timeout are independent concepts."""
+        self.assertEqual(self.engine.hard_deadline, 60.0)
+        from dropout_handler import AdaptiveServer
+        from flwr.server.strategy import FedAvg
+        from flwr.server.client_manager import SimpleClientManager
+        server = AdaptiveServer(
+            client_manager=SimpleClientManager(),
+            strategy=FedAvg(),
+            target_clients=3,
+            min_clients=2,
+            total_rounds=5,
+            hard_deadline=45.0
+        )
+        self.assertEqual(server.engine.hard_deadline, 45.0)
+
+    def test_27_final_model_logging_uses_total_rounds_rather_than_hardcoded_10(self):
+        """TEST 27: Final model logging uses total_rounds rather than hardcoded 10."""
+        from dropout_handler import AdaptiveServer
+        from flwr.server.strategy import FedAvg
+        from flwr.server.client_manager import SimpleClientManager
+        import pandas as pd
+        import tempfile
+        import os
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            server = AdaptiveServer(
+                client_manager=SimpleClientManager(),
+                strategy=FedAvg(),
+                target_clients=3,
+                min_clients=2,
+                total_rounds=5,
+                models_dir=temp_dir
+            )
+            
+            server._log_global_model(10, "A", 1, 0, 10.0)
+            self.assertFalse(os.path.exists(os.path.join(temp_dir, "all_global_models_registry.csv")))
+            
+            server.parameters = None
+            server._log_global_model(5, "A", 1, 0, 10.0)
+            self.assertTrue(os.path.exists(os.path.join(temp_dir, "all_global_models_registry.csv")))
+
 if __name__ == '__main__':
     unittest.main()

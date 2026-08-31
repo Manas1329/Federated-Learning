@@ -171,7 +171,7 @@ class AdaptiveServer(Server):
             for future in list(future_to_client.keys()):
                 client_proxy, ins = future_to_client.pop(future)
                 future.cancel()
-                self.engine.record_failure(str(client_proxy.cid), reason="Round ended or timed out")
+                self.engine.record_straggler_drop(str(client_proxy.cid))
                 failures.append(Exception("Round ended or timed out"))
                 self._record_participation(str(client_proxy.cid), success=False)
         
