@@ -100,6 +100,7 @@ ROUND_TIMEOUT  = args.round_timeout
 
 # Propagate to env so existing server.py / dropout_handler.py picks them up
 os.environ["TARGET_CLIENTS"] = str(TARGET_CLIENTS)
+os.environ["NUM_ROUNDS"] = str(NUM_ROUNDS)
 
 # ------------------------------------------------------------------
 # Detect LAN IP

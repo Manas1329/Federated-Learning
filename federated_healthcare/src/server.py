@@ -36,6 +36,7 @@ from dataclasses import replace
 
 USE_DP = os.environ.get("USE_DP", "0") == "1"
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
+TOTAL_ROUNDS = int(os.environ.get("NUM_ROUNDS", "10"))
 
 if USE_DP:
     SUFFIX = "c_dp"
@@ -310,7 +311,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             )
 
             # Save final global model
-            if server_round == 10:
+            if server_round == TOTAL_ROUNDS:
 
                 torch.save(
                     model.state_dict(),
@@ -510,7 +511,6 @@ if __name__ == "__main__":
 
     DROPOUT_HARD_DEADLINE = float(os.environ.get("DROPOUT_HARD_DEADLINE", default_hard_deadline))
     ROUND_TIMEOUT = float(os.environ.get("ROUND_TIMEOUT", default_round_timeout))
-    TOTAL_ROUNDS = int(os.environ.get("NUM_ROUNDS", 10))
 
     server = AdaptiveServer(
         client_manager=client_manager,
