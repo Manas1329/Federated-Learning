@@ -143,13 +143,11 @@ Open 4 separate terminal windows:
 
 ## 📈 Monitoring & Graphing
 
-(Not implemented yet)
 ### 1. Real-Time Streamlit Dashboard
 Launch the monitoring dashboard to observe training convergence in real-time:
 ```bash
 streamlit run federated_healthcare/dashboard/app.py
 ```
-(Continue from here)
 ### 2. Evaluating the Global Model
 Evaluate the final global model checkpoint against the test set:
 ```bash
@@ -212,42 +210,4 @@ Go to your Git repository (e.g. GitHub/GitLab) and merge the feature branch into
 
 
 
-
-
-
-How to Make Your University Project Stand Out
-Because the general concept exists, evaluators won't grade you on inventing FL from scratch; they will grade you on how deep your implementation goes and how effectively you handle real-world edge cases.
-
-Here are 4 concrete features you can implement to set your project apart:
-
-1. Add Differential Privacy (DP)
-The Problem: Advanced attackers can theoretically inspect the raw model weight updates coming from a hospital and reverse-engineer original images (Inversion Attacks).
-
-Your Edge: Add a differential privacy module (like Opacus in PyTorch) that injects controlled Gaussian noise into local gradients before sending them to the aggregator.
-
-Presentation Pitch: "We didn't just implement basic FL; we added Laplace/Gaussian noise guarantees so that weights cannot be reverse-engineered."
-
-2. Address Communication Bottlenecks (Gradient Quantization)
-The Problem: Sending full high-dimensional CNN weight matrices across low-bandwidth hospital internet links creates network latency.
-
-Your Edge: Compress weight updates (e.g., convert 32-bit floating-point numbers to 8-bit integers) using Model Quantization before transmission via gRPC.
-
-Presentation Pitch: "We optimized network payload sizes by 75% using gradient quantization, making FL viable over standard hospital network infrastructure."
-
-3. Implement Dynamic Client Selection / Dropouts
-The Problem: In real life, Hospital B's server might crash or lose internet connection mid-training. A basic FL setup freezes waiting for all clients.
-
-Your Edge: Configure your Flower strategy to proceed with aggregation even if 1 out of 3 Docker nodes drops out unexpectedly.
-
-Presentation Pitch: "Our system architecture is fault-tolerant to network disruptions and client dropouts."
-
-4. Display a Non-IID vs. Centralized Performance Comparison
-The Problem: Most students just show their federated model working in isolation.
-
-Your Edge: Include a comparative side-by-side study in your Streamlit dashboard:
-
-A model trained only on Hospital A's skewed data (performs terribly on Hospital B's data).
-
-The Global Federated Model (performs well across all hospitals).
-
-Presentation Pitch: "We empirically proved that local training causes severe domain overfitting, whereas our Federated setup resolves class distribution shifts."
+
