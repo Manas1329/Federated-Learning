@@ -28,11 +28,14 @@ SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
+# Repository root is one level above federated_healthcare/
+_BASE_DIR = os.path.dirname(SRC_DIR)
+_PROJECT_ROOT = os.path.dirname(_BASE_DIR)
+
 # ------------------------------------------------------------------
 # Load .env first (before argparse, so defaults can use env values)
 # ------------------------------------------------------------------
-_BASE_DIR = os.path.dirname(SRC_DIR)
-_ENV_FILE = os.path.join(_BASE_DIR, ".env")
+_ENV_FILE = os.path.join(_PROJECT_ROOT, ".env")
 if os.path.exists(_ENV_FILE):
     with open(_ENV_FILE) as _f:
         for _line in _f:
@@ -65,7 +68,7 @@ parser.add_argument(
 parser.add_argument(
     "--client_id",
     type=str,
-    default="Hospital_A",
+    default="hospital_A",
     help="Client identity shown in logs (e.g. Hospital_A, Hospital_B, Hospital_C)"
 )
 parser.add_argument(
@@ -84,21 +87,20 @@ args = parser.parse_args()
 if args.data_path:
     DATA_PATH = os.path.abspath(args.data_path)
 else:
-    # Auto-resolve: Hospital_A -> data/hospital_A
-    # Matches existing folder names: hospital_A, hospital_B, hospital_c
+    # Auto-resolve against the repo root, where hospital datasets live:
+    #   <repo>/data/hospital_A, hospital_B, hospital_C
     folder_name = args.client_id.lower().replace("-", "_")
-    DATA_PATH = os.path.abspath(
-        os.path.join(_BASE_DIR, "data", folder_name)
-    )
-    # Fallback: if the lowercase folder does not exist, try original casing
+    data_dir = os.path.join(_PROJECT_ROOT, "data")
+
+    DATA_PATH = os.path.abspath(os.path.join(data_dir, folder_name))
+    if not os.path.exists(DATA_PATH) and os.path.isdir(data_dir):
+        for entry in os.listdir(data_dir):
+            if entry.lower() == folder_name:
+                DATA_PATH = os.path.join(data_dir, entry)
+                break
+
     if not os.path.exists(DATA_PATH):
-        # Try exact match from known folder list
-        data_dir = os.path.join(_BASE_DIR, "data")
-        if os.path.isdir(data_dir):
-            for entry in os.listdir(data_dir):
-                if entry.lower() == folder_name:
-                    DATA_PATH = os.path.join(data_dir, entry)
-                    break
+        DATA_PATH = os.path.abspath(os.path.join(data_dir, folder_name))
 
 SERVER_ADDRESS = f"{args.server_ip}:{args.port}"
 CLIENT_NAME    = args.client_id
