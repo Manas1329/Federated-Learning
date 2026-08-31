@@ -6,7 +6,7 @@ import os
 # Ensure src is in path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.dropout_engine import AdaptiveDropoutDecisionEngine, ClientState, DropoutDecision
+from dropout_engine import AdaptiveDropoutDecisionEngine, ClientState, DropoutDecision
 
 class TestDropoutEngine(unittest.TestCase):
     
