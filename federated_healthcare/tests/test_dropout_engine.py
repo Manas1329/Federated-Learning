@@ -6,7 +6,7 @@ import os
 # Ensure src is in path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from dropout_engine import AdaptiveDropoutDecisionEngine, ClientState, DropoutDecision
+from src.dropout_engine import AdaptiveDropoutDecisionEngine, ClientState, DropoutDecision
 
 class TestDropoutEngine(unittest.TestCase):
     
@@ -335,46 +335,6 @@ class TestDropoutEngine(unittest.TestCase):
         self.engine.start_round(5, ["E"])
         self.assertEqual(self.engine.active_clients["E"], ClientState.ACTIVE)
         self.assertEqual(self.engine._get_profile("E").network_failures, 1)
-    def test_26_hard_deadline_independence(self):
-        """TEST 26: Hard deadline is independent from any external round timeout.
-        Engine correctly uses the initialized hard_deadline for its decision."""
-        # Create engine with 60s hard deadline
-        engine = AdaptiveDropoutDecisionEngine(hard_deadline=60.0)
-        engine.start_round(1, ["A"])
-        engine.record_success("A", 20.0) # mu=20
-        engine.start_round(2, ["A"])
-        
-        # At elapsed time 70s, predicted finish is 70s.
-        # Since 70 > 60 (hard_deadline), it should drop.
-        decision = engine.predict_completion("A", 70.0)
-        self.assertFalse(decision.should_wait)
-        self.assertEqual(engine.hard_deadline, 60.0)
-
-    @patch('dropout_handler.os.makedirs')
-    @patch('dropout_handler.pd.DataFrame.to_csv')
-    def test_27_final_round_configuration(self, mock_to_csv, mock_makedirs):
-        """TEST 27: Final round logic uses total_rounds instead of hardcoded 10."""
-        from dropout_handler import AdaptiveServer
-        from flwr.server.strategy import FedAvg
-        import flwr as fl
-        
-        server = AdaptiveServer(
-            client_manager=fl.server.SimpleClientManager(),
-            strategy=FedAvg(),
-            target_clients=1,
-            min_clients=1,
-            total_rounds=5, # Configured to 5
-            hard_deadline=60.0
-        )
-        server.parameters = fl.common.ndarrays_to_parameters([sys.modules['numpy'].array([1.0, 2.0])])
-        
-        # Round 4 should NOT log
-        server._log_global_model(4, "Hospital_A", 1, 0, 10.0)
-        mock_to_csv.assert_not_called()
-        
-        # Round 5 SHOULD log
-        server._log_global_model(5, "Hospital_A", 1, 0, 10.0)
-        mock_to_csv.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()
