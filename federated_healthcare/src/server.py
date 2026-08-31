@@ -502,22 +502,26 @@ if __name__ == "__main__":
     
     # DP-SGD is much slower, so we need much larger timeouts
     if USE_DP:
-        init_grace = 120.0
-        max_grace = 180.0
-        round_to = 1800.0
+        default_hard_deadline = 180.0
+        default_round_timeout = 1800.0
     else:
-        init_grace = 30.0
-        max_grace = 45.0
-        round_to = 300.0
+        default_hard_deadline = 60.0
+        default_round_timeout = 300.0
+
+    DROPOUT_HARD_DEADLINE = float(os.environ.get("DROPOUT_HARD_DEADLINE", default_hard_deadline))
+    ROUND_TIMEOUT = float(os.environ.get("ROUND_TIMEOUT", default_round_timeout))
+    TOTAL_ROUNDS = int(os.environ.get("NUM_ROUNDS", 10))
 
     server = AdaptiveServer(
         client_manager=client_manager,
         strategy=strategy,
         target_clients=TARGET_CLIENTS,
         min_clients=MIN_CLIENTS,
-        initial_grace_period=init_grace,
-        max_grace_period=max_grace,
-        round_timeout=round_to,
+        total_rounds=TOTAL_ROUNDS,
+        hard_deadline=DROPOUT_HARD_DEADLINE,
+        alpha=0.3,
+        beta=0.3,
+        k=1.0,
         suffix=SUFFIX,
         models_dir=MODEL_DIR
     )
@@ -530,7 +534,8 @@ if __name__ == "__main__":
         server_address="0.0.0.0:8080",
         server=server,
         config=fl.server.ServerConfig(
-            num_rounds=10
+            num_rounds=TOTAL_ROUNDS,
+            round_timeout=ROUND_TIMEOUT
         ),
         grpc_max_message_length=1024*1024*1024
     )

@@ -163,13 +163,23 @@ if not os.path.exists(CSV_FILE):
         writer.writerow([
             "client",
             "round",
+            "record_type",
             "epoch_time_sec",
             "training_time_sec",
             "payload_size_bytes",
             "payload_size_mb",
+            "quantized_payload_size_bytes",
+            "quantized_payload_size_mb",
+            "compression_ratio",
+            "payload_reduction_percent",
             "accuracy",
             "loss",
-            "device"
+            "device",
+            "epsilon",
+            "delta",
+            "dp_noise_multiplier",
+            "dp_max_grad_norm",
+            "evaluation_time_sec"
         ])
 
 
@@ -398,15 +408,22 @@ class HospitalClient(fl.client.NumPyClient):
         # INT8 QUANTIZATION
         # ============================================================
 
-        (
-            quantized_parameters,
-            quantized_payload_bytes,
-            quantized_payload_mb,
-            compression_ratio,
-            reduction_percent
-        ) = quantize_parameters(
-            fp32_parameters
-        )
+        if USE_QUANTIZATION:
+            (
+                quantized_parameters,
+                quantized_payload_bytes,
+                quantized_payload_mb,
+                compression_ratio,
+                reduction_percent
+            ) = quantize_parameters(
+                fp32_parameters
+            )
+        else:
+            quantized_parameters = fp32_parameters
+            quantized_payload_bytes = original_payload_bytes
+            quantized_payload_mb = original_payload_mb
+            compression_ratio = 1.0
+            reduction_percent = 0.0
 
         # ============================================================
         # PRINT RESULTS
@@ -459,39 +476,25 @@ class HospitalClient(fl.client.NumPyClient):
             ):
 
                 writer.writerow([
-
-                    # Client
-                    CLIENT_NAME,
-
-                    # FL round
-                    round_number,
-
-                    # Epoch/training time
-                    epoch_time,
-
-                    # Total training time
-                    total_training_time,
-
-                    # FP32 payload
-                    original_payload_bytes,
-                    original_payload_mb,
-
-                    # INT8 payload
-                    quantized_payload_bytes,
-                    quantized_payload_mb,
-
-                    # Quantization
-                    compression_ratio,
-                    reduction_percent,
-
-                    # Device
-                    str(device),
-
-                    # DP information
-                    epsilon if epsilon is not None else "",
-                    DP_DELTA if USE_DP else "",
-                    DP_NOISE_MULTIPLIER if USE_DP else "",
-                    DP_MAX_GRAD_NORM if USE_DP else ""
+                    CLIENT_NAME,                                # client
+                    round_number,                               # round
+                    "training",                                 # record_type
+                    epoch_time,                                 # epoch_time_sec
+                    total_training_time,                        # training_time_sec
+                    original_payload_bytes,                     # payload_size_bytes
+                    original_payload_mb,                        # payload_size_mb
+                    quantized_payload_bytes,                    # quantized_payload_size_bytes
+                    quantized_payload_mb,                       # quantized_payload_size_mb
+                    compression_ratio,                          # compression_ratio
+                    reduction_percent,                          # payload_reduction_percent
+                    "",                                         # accuracy
+                    "",                                         # loss
+                    str(device),                                # device
+                    epsilon if epsilon is not None else "",     # epsilon
+                    DP_DELTA if USE_DP else "",                 # delta
+                    DP_NOISE_MULTIPLIER if USE_DP else "",      # dp_noise_multiplier
+                    DP_MAX_GRAD_NORM if USE_DP else "",         # dp_max_grad_norm
+                    ""                                          # evaluation_time_sec
                 ])
 
         # ============================================================
@@ -634,15 +637,25 @@ class HospitalClient(fl.client.NumPyClient):
             writer = csv.writer(f)
 
             writer.writerow([
-                CLIENT_NAME,
-                round_number,
-                "",
-                "",
-                "",
-                "",
-                float(accuracy),
-                float(loss),
-                str(device)
+                CLIENT_NAME,            # client
+                round_number,           # round
+                "evaluation",           # record_type
+                "",                     # epoch_time_sec
+                "",                     # training_time_sec
+                "",                     # payload_size_bytes
+                "",                     # payload_size_mb
+                "",                     # quantized_payload_size_bytes
+                "",                     # quantized_payload_size_mb
+                "",                     # compression_ratio
+                "",                     # payload_reduction_percent
+                float(accuracy),        # accuracy
+                float(loss),            # loss
+                str(device),            # device
+                "",                     # epsilon
+                "",                     # delta
+                "",                     # dp_noise_multiplier
+                "",                     # dp_max_grad_norm
+                float(evaluation_time)  # evaluation_time_sec
             ])
 
         return (
