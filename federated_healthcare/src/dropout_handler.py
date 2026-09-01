@@ -27,7 +27,8 @@ class AdaptiveServer(Server):
         beta: float = 0.3,
         k: float = 1.0,
         suffix: str = "a_pure",
-        models_dir: str = "../models"
+        models_dir: str = "../models",
+        adaptive_dropout_enabled: bool = True
     ):
         super().__init__(client_manager=client_manager, strategy=strategy)
         self.target_clients = target_clients
@@ -35,6 +36,7 @@ class AdaptiveServer(Server):
         self.total_rounds = total_rounds
         self.suffix = suffix
         self.models_dir = models_dir
+        self.adaptive_dropout_enabled = adaptive_dropout_enabled
         
         self.engine = AdaptiveDropoutDecisionEngine(
             hard_deadline=hard_deadline,
@@ -144,8 +146,8 @@ class AdaptiveServer(Server):
                         self.engine.record_not_required(cid)
                     break
 
-                # Ask the engine if we should keep waiting
-                if future_to_client:
+                # Ask the engine if we should keep waiting (if enabled)
+                if future_to_client and self.adaptive_dropout_enabled:
                     decisions = self.engine.evaluate_missing_clients()
                     
                     futures_to_cancel = []
@@ -164,7 +166,7 @@ class AdaptiveServer(Server):
                         failures.append(Exception("Dropped by Adaptive Dropout Engine"))
                         self._record_participation(str(client_proxy.cid), success=False)
                         
-                    if timeout and self.engine.get_elapsed_time() >= timeout:
+                if future_to_client and timeout and self.engine.get_elapsed_time() >= timeout:
                         print(f"\n[AdaptiveServer] Hard round timeout ({timeout}s) expired! Canceling remaining.")
                         break
 

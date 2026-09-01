@@ -376,6 +376,25 @@ class HospitalClient(fl.client.NumPyClient):
         # TOTAL TRAINING TIME
         # ============================================================
 
+        # [EXPERIMENT-ONLY] Inject artificial delays if configured
+        delay_sec = 0.0
+        if "NONSTATIONARY_DELAYS" in os.environ:
+            ns_delays_str = os.environ["NONSTATIONARY_DELAYS"]
+            # format: "1:10,2:50,3:30"
+            for pair in ns_delays_str.split(","):
+                if ":" in pair:
+                    r_str, d_str = pair.split(":")
+                    if int(r_str.strip()) == round_number:
+                        delay_sec = float(d_str.strip())
+                        break
+        elif "ARTIFICIAL_DELAY_SEC" in os.environ:
+            delay_sec = float(os.environ["ARTIFICIAL_DELAY_SEC"])
+
+        if delay_sec > 0:
+            print(f"[{CLIENT_NAME}] [EXPERIMENT] Injecting artificial delay of {delay_sec} seconds...")
+            time.sleep(delay_sec)
+
+
         total_training_end = time.perf_counter()
 
         total_training_time = (

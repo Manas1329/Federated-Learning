@@ -1,0 +1,3 @@
+client,round,record_type,epoch_time_sec,training_time_sec,payload_size_bytes,payload_size_mb,quantized_payload_size_bytes,quantized_payload_size_mb,compression_ratio,payload_reduction_percent,accuracy,loss,device,epsilon,delta,dp_noise_multiplier,dp_max_grad_norm,evaluation_time_sec
+Hospital_C,1,training,12.228066600044258,23.772512200055644,33631240,32.07324981689453,8407906,8.018404006958008,3.999954328699679,74.99971455111378,,,cpu,,,,,
+Hospital_C,1,training,11.544358700048178,23.772512200055644,33631240,32.07324981689453,8407906,8.018404006958008,3.999954328699679,74.99971455111378,,,cpu,,,,,

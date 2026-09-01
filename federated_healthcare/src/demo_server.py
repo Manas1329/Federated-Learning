@@ -195,6 +195,7 @@ server = AdaptiveServer(
     k=1.0,
     suffix=SUFFIX,
     models_dir=MODEL_DIR,
+    adaptive_dropout_enabled=(os.environ.get("ADAPTIVE_DROPOUT_ENABLED", "1") == "1")
 )
 
 # ------------------------------------------------------------------
