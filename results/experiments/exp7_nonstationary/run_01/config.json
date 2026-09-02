@@ -1,7 +1,7 @@
 {
     "experiment_name": "exp7_nonstationary",
     "run_number": 1,
-    "timestamp": "2026-09-01T19:15:13",
+    "timestamp": "2026-09-02T11:48:03",
     "clients": [
         "Hospital_A",
         "Hospital_B",
@@ -24,6 +24,7 @@
             "7": 70
         }
     },
+    "reconnect_configuration": {},
     "random_seed": 42,
     "device": "cpu",
     "operating_system": "Windows"

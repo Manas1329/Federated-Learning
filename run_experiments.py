@@ -20,12 +20,14 @@ def run_experiment(
     round_timeout: float = 300.0,
     artificial_delays: dict = None,
     network_dropout_configuration: dict = None,
-    nonstationary_delays: dict = None
+    nonstationary_delays: dict = None,
+    reconnect_configuration: dict = None
 ):
     run_dir = RESULTS_BASE / experiment_name / f"run_{run_number:02d}"
     
-    if run_dir.exists():
-        raise FileExistsError(f"Run directory {run_dir} already exists. Never overwrite!")
+    while run_dir.exists():
+        run_number += 1
+        run_dir = RESULTS_BASE / experiment_name / f"run_{run_number:02d}"
         
     run_dir.mkdir(parents=True)
     
@@ -47,6 +49,7 @@ def run_experiment(
         "artificial_delays": artificial_delays or {},
         "network_dropout_configuration": network_dropout_configuration or {},
         "nonstationary_delays": nonstationary_delays or {},
+        "reconnect_configuration": reconnect_configuration or {},
         "random_seed": 42,
         "device": "cpu",
         "operating_system": platform.system()
@@ -65,66 +68,74 @@ def run_experiment(
     env["NUM_ROUNDS"] = str(num_rounds)
     env["EXPERIMENT_RESULTS_DIR"] = str(run_dir)
     
-    with open(run_dir / "execution.log", "w") as log_f:
-        log_f.write(f"=== Starting Experiment: {experiment_name} Run {run_number} ===\n\n")
-        
-        # Start Server
-        log_f.write("Starting Server...\n")
-        server_proc = subprocess.Popen(
-            ["python", "demo_server.py", "--num_rounds", str(num_rounds)],
-            cwd=str(SRC_DIR),
-            env=env,
-            stdout=log_f,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-        time.sleep(3) # Wait for server to bind
-
-        clients = {}
-        for cid in config["clients"]:
-            c_env = env.copy()
-            if artificial_delays and cid in artificial_delays:
-                c_env["ARTIFICIAL_DELAY_SEC"] = str(artificial_delays[cid])
-            if nonstationary_delays and cid in nonstationary_delays:
-                # Expect dict like {1: 10, 2: 50}
-                ns_str = ",".join([f"{k}:{v}" for k,v in nonstationary_delays[cid].items()])
-                c_env["NONSTATIONARY_DELAYS"] = ns_str
-                
-            c_proc = subprocess.Popen(
-                ["python", "demo_client.py", "--server_ip", "127.0.0.1", "--client_id", cid],
+    try:
+        with open(run_dir / "execution.log", "w") as log_f:
+            log_f.write(f"=== Starting Experiment: {experiment_name} Run {run_number} ===\n\n")
+            
+            # Start Server
+            log_f.write("Starting Server...\n")
+            server_proc = subprocess.Popen(
+                ["python", "demo_server.py", "--num_rounds", str(num_rounds)],
                 cwd=str(SRC_DIR),
-                env=c_env,
+                env=env,
                 stdout=log_f,
                 stderr=subprocess.STDOUT,
                 text=True
             )
-            clients[cid] = c_proc
+            time.sleep(3) # Wait for server to bind
 
-        start_time = time.time()
-        timeout = 3600
-        
-        while server_proc.poll() is None:
-            if time.time() - start_time > timeout:
-                log_f.write("\n[TIMEOUT] Experiment timed out. Killing all processes.\n")
-                server_proc.kill()
-                for c in clients.values(): c.kill()
-                break
-                
-            # For network dropout simulations, check config
-            if network_dropout_configuration:
-                for cid, drop_round in network_dropout_configuration.items():
-                    # For simplicity without parsing live logs, we drop the client after N seconds
-                    # Round time is roughly 60 seconds
-                    drop_time = drop_round * 60
-                    if (time.time() - start_time) > drop_time and clients[cid].poll() is None:
-                        log_f.write(f"\n[NETWORK DROPOUT SIMULATION] Terminating {cid} at {time.time() - start_time:.1f}s\n")
-                        clients[cid].kill()
+            clients = {}
+            for cid in config["clients"]:
+                c_env = env.copy()
+                if artificial_delays and cid in artificial_delays:
+                    c_env["ARTIFICIAL_DELAY_SEC"] = str(artificial_delays[cid])
+                if nonstationary_delays and cid in nonstationary_delays:
+                    # Expect dict like {1: 10, 2: 50}
+                    ns_str = ",".join([f"{k}:{v}" for k,v in nonstationary_delays[cid].items()])
+                    c_env["NONSTATIONARY_DELAYS"] = ns_str
+                if network_dropout_configuration and cid in network_dropout_configuration:
+                    c_env["NETWORK_DROPOUT_ROUND"] = str(network_dropout_configuration[cid])
+                    
+                c_proc = subprocess.Popen(
+                    ["python", "demo_client.py", "--server_ip", "127.0.0.1", "--client_id", cid],
+                    cwd=str(SRC_DIR),
+                    env=c_env,
+                    stdout=log_f,
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+                clients[cid] = c_proc
+
+            start_time = time.time()
+            timeout = 3600
+            
+            # Local copy to safely mutate during iteration
+            active_network_dropouts = network_dropout_configuration.copy() if network_dropout_configuration else {}
+
+            while server_proc.poll() is None:
+                if time.time() - start_time > timeout:
+                    log_f.write("\n[TIMEOUT] Experiment timed out. Killing all processes.\n")
+                    break
+                    
+                # For network dropout simulations, detect process death
+                for cid in list(active_network_dropouts.keys()):
+                    if clients[cid].poll() is not None:
+                        log_f.write(f"\n[NETWORK DROPOUT SIMULATION] Detected termination of {cid} at {time.time() - start_time:.1f}s\n")
+                        log_f.flush()
                         # Simulate reconnect?
-                        if config.get("reconnect_configuration") and cid in config["reconnect_configuration"]:
-                            reconnect_delay = config["reconnect_configuration"][cid]
+                        if reconnect_configuration and cid in reconnect_configuration:
+                            reconnect_delay = reconnect_configuration[cid]
                             time.sleep(reconnect_delay)
                             log_f.write(f"\n[RECOVERY SIMULATION] Restarting {cid}\n")
+                            log_f.flush()
                             c_env = env.copy()
+                            # Do not set NETWORK_DROPOUT_ROUND again so it doesn't die again
+                            if artificial_delays and cid in artificial_delays:
+                                c_env["ARTIFICIAL_DELAY_SEC"] = str(artificial_delays[cid])
+                            if nonstationary_delays and cid in nonstationary_delays:
+                                ns_str = ",".join([f"{k}:{v}" for k,v in nonstationary_delays[cid].items()])
+                                c_env["NONSTATIONARY_DELAYS"] = ns_str
+                                
                             clients[cid] = subprocess.Popen(
                                 ["python", "demo_client.py", "--server_ip", "127.0.0.1", "--client_id", cid],
                                 cwd=str(SRC_DIR),
@@ -133,16 +144,20 @@ def run_experiment(
                                 stderr=subprocess.STDOUT,
                                 text=True
                             )
-                        # Ensure we don't drop again
-                        network_dropout_configuration[cid] = 9999
-            
-            time.sleep(1)
-            
-        for c in clients.values():
-            if c.poll() is None:
-                c.kill()
+                        # Remove from tracking so we don't process it again
+                        del active_network_dropouts[cid]
                 
-        log_f.write("\n=== Experiment Completed ===\n")
+                time.sleep(1)
+                
+            log_f.write("\n=== Experiment Completed ===\n")
+    finally:
+        # Cleanup
+        if 'server_proc' in locals() and server_proc.poll() is None:
+            server_proc.kill()
+        if 'clients' in locals():
+            for c in clients.values():
+                if c.poll() is None:
+                    c.kill()
 
     suffix_dir = run_dir / "b_quantized"
     if suffix_dir.exists():
@@ -162,7 +177,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     experiments_to_run = [args.exp] if args.exp != "all" else [
-        "exp2_one_straggler", "exp3_two_stragglers", "exp4_network_dropout",
+        "exp1_baseline", "exp2_one_straggler", "exp3_two_stragglers", "exp4_network_dropout",
         "exp5_recovery", "exp6_adaptive_off", "exp7_nonstationary"
     ]
 
@@ -175,10 +190,14 @@ if __name__ == "__main__":
                 run_experiment("exp2_one_straggler", i, num_rounds=10, artificial_delays={"Hospital_B": 70}) # > 60s deadline
             elif exp == "exp3_two_stragglers":
                 run_experiment("exp3_two_stragglers", i, num_rounds=10, artificial_delays={"Hospital_B": 70, "Hospital_C": 75})
+            elif exp == "exp4_val":
+                run_experiment("exp4_val", i, num_rounds=3, network_dropout_configuration={"Hospital_C": 2})
+            elif exp == "exp5_val":
+                run_experiment("exp5_val", i, num_rounds=4, network_dropout_configuration={"Hospital_C": 2}, reconnect_configuration={"Hospital_C": 5})
             elif exp == "exp4_network_dropout":
-                run_experiment("exp4_network_dropout", i, num_rounds=10, network_dropout_configuration={"Hospital_B": 4})
+                run_experiment("exp4_network_dropout", i, num_rounds=10, network_dropout_configuration={"Hospital_C": 2})
             elif exp == "exp5_recovery":
-                run_experiment("exp5_recovery", i, num_rounds=10, network_dropout_configuration={"Hospital_B": 4}) # wait I need to pass reconnect config
+                run_experiment("exp5_recovery", i, num_rounds=10, network_dropout_configuration={"Hospital_C": 2}, reconnect_configuration={"Hospital_C": 5})
             elif exp == "exp6_adaptive_off":
                 run_experiment("exp6_adaptive_off", i, num_rounds=10, adaptive_dropout_enabled=False, artificial_delays={"Hospital_B": 70})
             elif exp == "exp7_nonstationary":

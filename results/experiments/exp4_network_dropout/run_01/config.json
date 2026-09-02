@@ -1,7 +1,7 @@
 {
     "experiment_name": "exp4_network_dropout",
     "run_number": 1,
-    "timestamp": "2026-09-01T14:38:50",
+    "timestamp": "2026-09-02T00:11:03",
     "clients": [
         "Hospital_A",
         "Hospital_B",
@@ -18,9 +18,10 @@
     "MIN_CLIENTS": 2,
     "artificial_delays": {},
     "network_dropout_configuration": {
-        "Hospital_B": 4
+        "Hospital_C": 2
     },
     "nonstationary_delays": {},
+    "reconnect_configuration": {},
     "random_seed": 42,
     "device": "cpu",
     "operating_system": "Windows"

@@ -203,6 +203,9 @@ def calculate_payload_size(parameters):
 
 class HospitalClient(fl.client.NumPyClient):
 
+    def get_properties(self, config):
+        return {"client_name": str(CLIENT_NAME)}
+
     def get_parameters(self, config):
 
         return [
@@ -249,6 +252,14 @@ class HospitalClient(fl.client.NumPyClient):
             "server_round",
             0
         )
+
+        # [EXPERIMENT-ONLY] Simulate exact network dropout at specific round
+        if "NETWORK_DROPOUT_ROUND" in os.environ:
+            dropout_round = int(os.environ["NETWORK_DROPOUT_ROUND"])
+            if round_number == dropout_round:
+                print(f"[{CLIENT_NAME}] [EXPERIMENT] Simulating network dropout at round {round_number}. Exiting immediately.")
+                import sys
+                sys.exit(1)
 
         print("\n" + "=" * 60)
         print(f"[{CLIENT_NAME}] Federated Round {round_number}")

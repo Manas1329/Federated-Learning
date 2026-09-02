@@ -1,7 +1,7 @@
 {
     "experiment_name": "exp2_one_straggler",
     "run_number": 1,
-    "timestamp": "2026-09-01T14:27:37",
+    "timestamp": "2026-09-02T00:00:40",
     "clients": [
         "Hospital_A",
         "Hospital_B",
@@ -21,6 +21,7 @@
     },
     "network_dropout_configuration": {},
     "nonstationary_delays": {},
+    "reconnect_configuration": {},
     "random_seed": 42,
     "device": "cpu",
     "operating_system": "Windows"
