@@ -3,6 +3,7 @@ import time
 import pandas as pd
 import concurrent.futures
 import grpc
+import threading
 from typing import List, Tuple, Dict, Optional, Union
 from flwr.server import Server
 from flwr.common import FitRes, EvaluateRes, DisconnectRes, FitIns, EvaluateIns
@@ -48,6 +49,9 @@ class AdaptiveServer(Server):
         
         self.csv_path = os.path.join(self.models_dir, f"global_model_records_{self.suffix}.csv")
         self.participation_stats: Dict[str, Dict[str, int]] = {}
+        
+        self.busy_clients = set()
+        self._busy_lock = threading.Lock()
 
     def fit_round(
         self,
@@ -67,6 +71,32 @@ class AdaptiveServer(Server):
             print("No clients selected, canceling round.")
             return None
 
+        # Isolated proxy-release wait mechanism to prevent reuse of busy proxies
+        wait_start = time.time()
+        max_wait = 30.0
+        
+        while True:
+            available_instructions = []
+            with self._busy_lock:
+                for proxy, ins in client_instructions:
+                    if str(proxy.cid) not in self.busy_clients:
+                        available_instructions.append((proxy, ins))
+            
+            if len(available_instructions) >= self.min_clients:
+                break
+                
+            if time.time() - wait_start > max_wait:
+                print(f"[AdaptiveServer] Timeout waiting for busy proxies. Proceeding with {len(available_instructions)} available clients.")
+                break
+                
+            time.sleep(1.0)
+            
+        client_instructions = available_instructions
+        
+        if not client_instructions:
+            print("[AdaptiveServer] No available non-busy clients to select.")
+            return None
+
         total_selected = len(client_instructions)
         print(f"\n[AdaptiveServer] Round {server_round}: Selected {total_selected} clients.")
         
@@ -79,12 +109,26 @@ class AdaptiveServer(Server):
         
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
         try:
-            future_to_client = {
-                executor.submit(
+            future_to_client = {}
+            for client_proxy, ins in client_instructions:
+                cid = str(client_proxy.cid)
+                
+                with self._busy_lock:
+                    self.busy_clients.add(cid)
+                    
+                future = executor.submit(
                     client_proxy.fit, ins, timeout=timeout, group_id=server_round
-                ): (client_proxy, ins)
-                for client_proxy, ins in client_instructions
-            }
+                )
+                
+                def make_done_callback(client_id):
+                    def cb(fut):
+                        with self._busy_lock:
+                            if client_id in self.busy_clients:
+                                self.busy_clients.remove(client_id)
+                    return cb
+                    
+                future.add_done_callback(make_done_callback(cid))
+                future_to_client[future] = (client_proxy, ins)
 
             while future_to_client:
                 # Wait for up to 1 second for any future to complete, to allow periodic engine evaluation
