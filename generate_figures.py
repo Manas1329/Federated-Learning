@@ -56,7 +56,9 @@ def plot_fig1():
     for exp in exp_order:
         row = df[df['experiment'] == exp].iloc[0]
         accuracies.append(row['final_accuracy'])
-        if row['adaptive_dropout'] == 'ON':
+        if exp == 'exp1_baseline':
+            colors.append('#2ca02c') # Green
+        elif row['adaptive_dropout'] == 'ON':
             colors.append('#1f77b4') # Blue
         else:
             colors.append('#ff7f0e') # Orange
@@ -81,7 +83,8 @@ def plot_fig1():
     ax.grid(axis='y', linestyle='--', alpha=0.7, zorder=0)
     
     from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor='#1f77b4', edgecolor='black', label='Adaptive Dropout ON'),
+    legend_elements = [Patch(facecolor='#2ca02c', edgecolor='black', label='Baseline (Reference)'),
+                       Patch(facecolor='#1f77b4', edgecolor='black', label='Adaptive Dropout ON'),
                        Patch(facecolor='#ff7f0e', edgecolor='black', label='Adaptive Dropout OFF')]
     ax.legend(handles=legend_elements, loc='lower right')
     
@@ -147,20 +150,27 @@ def plot_fig3():
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # Plot observations
-    ax.plot(rounds, obs_time, marker='o', color='#1f77b4', linestyle='-', linewidth=2, markersize=8, label='Observed Completion Time')
+    ax.plot(rounds, obs_time, marker='o', color='#1f77b4', linestyle='-', linewidth=2, markersize=8, label='Step 1: Observed Delay')
     
     # Plot predicted/safe values
-    ax.plot(rounds, pred_time, marker='s', color='#ff7f0e', linestyle='', markersize=8, label='Predicted Safe Completion')
+    ax.plot(rounds, pred_time, marker='s', color='#ff7f0e', linestyle='', markersize=8, label='Step 2: Predicted Safe Completion')
     
     # Hard deadline
-    ax.axhline(y=60, color='red', linestyle=':', linewidth=2, label='Hard Deadline (60s)')
+    ax.axhline(y=60, color='red', linestyle=':', linewidth=2, label='Step 3: Hard Deadline (60s)')
     
     # Mark dropped rounds
-    ax.scatter([4, 7], [1.2, 1.1], color='red', marker='X', s=150, zorder=5, label='Preemptive Drop Decision')
+    ax.scatter([4, 7], [1.2, 1.1], color='red', marker='X', s=150, zorder=5, label='Step 4: Preemptive Drop Decision')
+    
+    # Adding an explicit visual flow arrow between R3 obs and R4 pred to show the mechanism
+    ax.annotate('', xy=(4, 77.7), xytext=(3, 106.3),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=6, linestyle='--'), zorder=4)
+                
+    ax.annotate('', xy=(7, 71.2), xytext=(6, 25.3),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=6, linestyle='--'), zorder=4)
     
     ax.set_xlabel('Federated Round')
     ax.set_ylabel('Completion / Predicted Safe Completion Time (s)')
-    ax.set_title('Adaptive Decision Response to Nonstationary Client Delay')
+    ax.set_title('Adaptive Decision Mechanism (Hospital_C)')
     ax.set_xticks(rounds)
     ax.set_xlim(0.5, 10.5)
     
