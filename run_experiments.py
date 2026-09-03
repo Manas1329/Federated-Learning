@@ -107,7 +107,12 @@ def run_experiment(
                 clients[cid] = c_proc
 
             start_time = time.time()
-            timeout = 3600
+            
+            # Fetch timeout from environment or use default 600
+            try:
+                timeout = int(os.environ.get("EXPERIMENT_TIMEOUT_SEC", 600))
+            except ValueError:
+                timeout = 600
             
             # Local copy to safely mutate during iteration
             active_network_dropouts = network_dropout_configuration.copy() if network_dropout_configuration else {}
