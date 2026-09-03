@@ -9,7 +9,7 @@ To mitigate severe logical CPU oversubscription (3 clients * 16 PyTorch threads 
 - `VECLIB_MAXIMUM_THREADS=2`
 - `NUMEXPR_NUM_THREADS=2`
 
-**Crucially, these thread limitations are purely environmental constraints.** They strictly prevent the host OS from locking up during concurrent backpropagation and DO NOT modify the federated learning algorithm, `AdaptiveDropoutDecisionEngine` equations, or Flower proxy state mechanics in any way.
+**Crucially, these thread limitations are purely environmental constraints.** They prevent the host OS from locking up during concurrent backpropagation and DO NOT modify the federated learning algorithm, `AdaptiveDropoutDecisionEngine` equations, or Flower proxy state mechanics in any way.
 
 ## Experiment Summary
 
@@ -29,13 +29,13 @@ To mitigate severe logical CPU oversubscription (3 clients * 16 PyTorch threads 
 - **Objective:** Evaluate FL performance without artificial delays.
 - **Setup:** 3 clients, no delays, adaptive dropout ON.
 - **Observed Result:** 10/10 rounds completed with high final accuracy (97.29%). 
-- **Validates:** The core architecture functions reliably in normal conditions.
+- **Validates:** The core architecture functioned under the tested conditions.
 - **Classification:** VALID
 
 ### Exp 2: One Straggler
 - **Objective:** Evaluate engine detection of a single delayed client.
 - **Setup:** Hospital_B has a 70s delay. 
-- **Observed Result:** Straggler successfully detected and dropped, protecting the minimum quorum of 2. Accuracy: 76.47%.
+- **Observed Result:** Straggler detected and dropped, protecting the minimum quorum of 2. Accuracy: 76.47%.
 - **Validates:** Simple EMA tracking and dropping logic for a consistent straggler.
 - **Classification:** VALID
 
@@ -94,19 +94,19 @@ To mitigate severe logical CPU oversubscription (3 clients * 16 PyTorch threads 
 - **Classification:** VALID WITH LIMITATION
 
 ## AdaptiveDropoutDecisionEngine Evidence
-The `AdaptiveDropoutDecisionEngine` functions entirely as designed. The recorded logs explicitly verify the mathematical chain: 
+The recorded execution behavior was consistent with the specified `AdaptiveDropoutDecisionEngine` decision rules in the validated experiments. The recorded logs provided empirical evidence for the mathematical chain: 
 1. The server tracks wall-clock timing (`OBSERVED_COMPLETION`).
-2. The engine correctly computes the Exponential Moving Average (`EMA`) and Deviation.
+2. The engine computes the Exponential Moving Average (`EMA`) and Deviation.
 3. In subsequent rounds, the predicted finish time evaluates `T = max(elapsed, EMA + 1.0 * DEV)`. 
 4. If this prediction exceeds the 60.0s hard deadline, the engine preemptively drops the client to save server wait time.
-5. If dropping the client violates the `minimum_quorum`, the engine forcibly overrides the drop and invokes `REASON quorum protection`.
+5. If dropping the client violates the `minimum_quorum`, the engine overrides the drop and invokes `REASON quorum protection`.
 
 ## Proxy/Concurrency Robustness
-A critical `busy_clients` safeguard (a proxy tracker and threading lock) was introduced to the server wrapper. It ensures that a `ClientProxy` is never assigned a new task while a previous `fit()` thread is still running. If a delayed proxy is selected in a subsequent round, the server isolates it, invokes a `Timeout waiting for busy proxies` warning, and gracefully skips selection rather than concurrently dispatching multiple payloads.
+A `busy_clients` safeguard (a proxy tracker and threading lock) was introduced to the server wrapper. It ensures that a `ClientProxy` is not assigned a new task while a previous `fit()` thread is still running. If a delayed proxy is selected in a subsequent round, the server isolates it, invokes a `Timeout waiting for busy proxies` warning, and skips selection rather than concurrently dispatching multiple payloads.
 
 ## Limitations
 - **Algorithmic limitations:** No deviation from the specified decision rules was observed in the validated experiments. However, these experiments do not establish that the decision mechanism is optimal under all workloads, client populations, or network conditions.
-- **Experimental/Environmental limitations:** Because the orchestrator spawns 3 PyTorch clients and 1 server on the same laptop concurrently, CPU cache thrashing and thread oversubscription frequently inflated Hospital_A's actual execution time past the 60.0s mark. This forced the engine to legitimately drop Hospital_A alongside the intentional stragglers, leading to aborted aggregations.
+- **Experimental/Environmental limitations:** Because the orchestrator spawns 3 PyTorch clients and 1 server on the same laptop concurrently, CPU cache thrashing and thread oversubscription frequently inflated Hospital_A's actual execution time past the 60.0s mark. This forced the engine to drop Hospital_A alongside the intentional stragglers, leading to aborted aggregations.
 - **Incomplete/missing repository artifacts:** None for the authoritative runs.
 
 ## Overall Evaluation
