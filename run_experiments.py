@@ -64,6 +64,13 @@ def run_experiment(
     env["ADAPTIVE_DROPOUT_ENABLED"] = str(config["ADAPTIVE_DROPOUT_ENABLED"])
     env["DROPOUT_HARD_DEADLINE"] = str(config["DROPOUT_HARD_DEADLINE"])
     env["ROUND_TIMEOUT"] = str(config["ROUND_TIMEOUT"])
+    
+    # Thread limit environment variables to prevent CPU oversubscription
+    env["OMP_NUM_THREADS"] = "2"
+    env["MKL_NUM_THREADS"] = "2"
+    env["OPENBLAS_NUM_THREADS"] = "2"
+    env["VECLIB_MAXIMUM_THREADS"] = "2"
+    env["NUMEXPR_NUM_THREADS"] = "2"
     env["TARGET_CLIENTS"] = "3"
     env["NUM_ROUNDS"] = str(num_rounds)
     env["EXPERIMENT_RESULTS_DIR"] = str(run_dir)
