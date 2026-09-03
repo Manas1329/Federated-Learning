@@ -42,44 +42,55 @@ To mitigate severe logical CPU oversubscription (3 clients * 16 PyTorch threads 
 ### Exp 3: Two Stragglers
 - **Objective:** Evaluate quorum protection mechanism.
 - **Setup:** Hospital_B and Hospital_C have 70s and 75s delays. Minimum quorum is 2.
-- **Observed Result:** 10 rounds executed. Due to contention, Hospital_A occasionally exceeded 60s. The engine appropriately identified the deadline misses and aborted aggregations where minimum quorum failed, succeeding in 6 aggregations.
+- **Observed Result:** 
+  - 10 rounds were executed.
+  - 6 rounds successfully reached aggregation.
+  - 4 rounds aborted because minimum quorum could not be satisfied.
+  - Across all client attempts, 5 client-rounds completed successfully.
 - **Validates:** Quorum protection logic and defensive round abortions.
-- **Limitations:** CPU contention occasionally forced Hospital_A over the 60s hard deadline, artificially creating a 3-straggler scenario in some rounds.
+- **Limitations:** CPU contention caused Hospital_A to occasionally exceed the 60-second deadline, effectively creating situations where all available clients could be unavailable simultaneously.
 - **Classification:** VALID WITH LIMITATION
 
 ### Exp 4: Network Dropout
 - **Objective:** Evaluate handling of absolute client disconnections.
 - **Setup:** Hospital_C genuinely disconnects midway.
-- **Observed Result:** Hospital_C's failure successfully detected via `grpc_bridge` and handled gracefully by the server, preserving 97.00% accuracy.
+- **Observed Result:** Hospital_C's disconnection was detected and the server continued operating with the remaining available clients. The run completed 10 configured rounds with one failed client-round.
 - **Validates:** Strict transport-layer failure recovery without zombie proxy threads.
 - **Classification:** VALID
 
 ### Exp 5: Recovery
 - **Objective:** Evaluate reconnect handling.
 - **Setup:** Hospital_C disconnects and later reconnects.
-- **Observed Result:** Reconnection is natively supported by Flower (assigning a new CID), which the server processes without error.
-- **Validates:** Resilience to volatile clients in an unstable network.
+- **Observed Result:** Flower successfully supports reconnection at the transport/framework level. The reconnecting client received a new CID from Flower. Therefore, native reconnection does not automatically imply preservation of the server's historical logical client state.
+- **Validates:** Resilience to volatile clients in an unstable network at the transport level.
 - **Classification:** VALID
 
 ### Exp 6: Adaptive Off
 - **Objective:** Control group to measure baseline unoptimized behavior.
 - **Setup:** Hospital_B delayed by 70s, adaptive dropout disabled.
-- **Observed Result:** Server waits indiscriminately for 30/30 clients over 10 rounds. No preemptive dropping.
-- **Validates:** The FL environment natively guarantees aggregation given infinite time.
+- **Observed Result:** With adaptive dropout disabled, the server continued waiting for available client results rather than applying the proposed predictive preemption mechanism.
+- **Validates:** Unoptimized behavior when preemption is removed.
 - **Classification:** VALID
 
 ### Exp 7: Nonstationary Delays
 - **Objective:** Evaluate EMA adaptation to shifting network unreliability.
 - **Setup:** Hospital_C injected with a 70s delay strictly in Rounds 3 and 7.
 - **Observed Result:** 
-  - R1: 34.6s (EMA: 34.6s)
-  - R2: 33.9s (EMA: 34.4s)
-  - R3 (delay): 106.3s (EMA jumps to 56.0s, deviation 21.7s)
-  - R4: Predicted finish 77.7s > 60s. Preemptively dropped at 1.2s.
-  - R6: 25.3s (EMA drops to 46.8s, deviation 24.4s)
-  - R7 (delay): Predicted finish 71.2s > 60s. Preemptively dropped at 1.1s.
-- **Validates:** Dynamic prediction tracking and preemptive shielding based on historical standard deviations.
-- **Limitations:** Identical local CPU contention issues as Exp 3.
+  - R1 = 34.6s
+  - R2 = 33.9s
+  - R3 = 106.3s after the configured 70s delay
+  - EMA after the spike ≈ 56.0s
+  - deviation ≈ 21.7s
+  - R4 predicted finish ≈ 77.7s
+  - Hospital_C preemptively dropped at ≈ 1.2s
+  - R6 = 25.3s
+  - R7 predicted finish ≈ 71.2s
+  - Hospital_C preemptively dropped at ≈ 1.1s
+  - quorum protection was invoked when required
+  - zero "ValueError: This should not happen" proxy-corruption errors
+  - busy_clients prevented reuse of still-running proxies
+- **Validates:** The observed execution behavior was consistent with the specified decision rules for historical prediction and preemption.
+- **Limitations:** The adaptive behavior itself was observed as intended. However, CPU contention on the local multi-process host caused additional clients to exceed the 60-second hard deadline; this produced skipped/aborted rounds. Therefore the limitation concerns experimental conditions rather than an observed deviation from the decision rules.
 - **Classification:** VALID WITH LIMITATION
 
 ## AdaptiveDropoutDecisionEngine Evidence
@@ -91,12 +102,12 @@ The `AdaptiveDropoutDecisionEngine` functions entirely as designed. The recorded
 5. If dropping the client violates the `minimum_quorum`, the engine forcibly overrides the drop and invokes `REASON quorum protection`.
 
 ## Proxy/Concurrency Robustness
-A critical `busy_clients` safeguard (a proxy tracker and threading lock) was introduced to the server wrapper. It ensures that a `ClientProxy` is never assigned a new task while a previous `fit()` thread is still running. If a delayed proxy is selected in a subsequent round, the server isolates it, invokes a `Timeout waiting for busy proxies` warning, and gracefully skips selection rather than concurrently dispatching multiple payloads. This comprehensively prevents the `ValueError: This should not happen` corruption in Flower's `grpc_bridge`.
+A critical `busy_clients` safeguard (a proxy tracker and threading lock) was introduced to the server wrapper. It ensures that a `ClientProxy` is never assigned a new task while a previous `fit()` thread is still running. If a delayed proxy is selected in a subsequent round, the server isolates it, invokes a `Timeout waiting for busy proxies` warning, and gracefully skips selection rather than concurrently dispatching multiple payloads.
 
 ## Limitations
-- **Algorithmic:** None. The core formulas behaved precisely according to mathematical specifications.
-- **Experimental/Environmental:** Because the orchestrator spawns 3 PyTorch clients and 1 server on the same laptop concurrently, CPU cache thrashing and thread oversubscription frequently inflated Hospital_A's actual execution time past the 60.0s mark. This forced the engine to legitimately drop Hospital_A alongside the intentional stragglers, leading to aborted aggregations.
-- **Repository Artifacts:** None missing for the authoritative runs.
+- **Algorithmic limitations:** No deviation from the specified decision rules was observed in the validated experiments. However, these experiments do not establish that the decision mechanism is optimal under all workloads, client populations, or network conditions.
+- **Experimental/Environmental limitations:** Because the orchestrator spawns 3 PyTorch clients and 1 server on the same laptop concurrently, CPU cache thrashing and thread oversubscription frequently inflated Hospital_A's actual execution time past the 60.0s mark. This forced the engine to legitimately drop Hospital_A alongside the intentional stragglers, leading to aborted aggregations.
+- **Incomplete/missing repository artifacts:** None for the authoritative runs.
 
 ## Overall Evaluation
-The observed execution behavior was consistent with the specified decision rules. The `AdaptiveDropoutDecisionEngine` dynamically tracked client unreliability, properly enforced quorum invariants, and safeguarded the FL cycle against concurrency-induced proxy corruption.
+The seven experiments provide empirical evidence that the implemented AdaptiveDropoutDecisionEngine can track client completion-time behavior, incorporate observed variability into subsequent completion predictions, apply deadline-based preemption, and preserve minimum-quorum constraints. Experiment 7 additionally demonstrates adaptation to a transient nonstationary delay. The busy_clients safeguard eliminated the previously observed Flower proxy-corruption error in the validated runs. The principal limitation is the constrained local multi-process execution environment, where CPU contention affected client completion times and therefore some deadline/quorum outcomes.
