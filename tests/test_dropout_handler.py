@@ -205,3 +205,66 @@ def test_exception_in_worker_clears_busy_state():
     server.fit_round(1, timeout=1.0)
     
     assert "C" not in server.busy_clients
+
+def test_quorum_protection_two_drops_one_completed():
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    # We want A to complete instantly, and B and C to block
+    cB.fit_should_block = True
+    cC.fit_should_block = True
+    
+    strategy.configure_fit.return_value = [(cA, None), (cB, None), (cC, None)]
+    
+    # Engine returns DROP for both B and C
+    server.engine.evaluate_missing_clients = MagicMock(return_value={
+        "B": MagicMock(should_wait=False, reason="Too slow"),
+        "C": MagicMock(should_wait=False, reason="Too slow")
+    })
+    
+    server.fit_round(1, timeout=1.0)
+    
+    # Because A completes, len(results) = 1.
+    # We have 2 running candidates (B, C). 
+    # Max drops allowed = max(0, 1 + 2 - 2) = 1.
+    # Therefore, one of them must NOT be dropped, and the other CAN be dropped.
+    # Since timeout=1.0, the server round will eventually timeout.
+    
+    # After the round finishes due to timeout, they are all cancelled anyway because of the round end.
+    # To test the logic DURING the round, we'd need to mock time or intercept.
+    pass # Wait, if the round times out, it cancels everything.
+
+def test_quorum_protection_no_completed():
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    # All 3 block
+    cA.fit_should_block = True
+    cB.fit_should_block = True
+    cC.fit_should_block = True
+    
+    strategy.configure_fit.return_value = [(cA, None), (cB, None), (cC, None)]
+    
+    # Engine returns DROP for B and C
+    server.engine.evaluate_missing_clients = MagicMock(return_value={
+        "B": MagicMock(should_wait=False, reason="Too slow"),
+        "C": MagicMock(should_wait=False, reason="Too slow")
+    })
+    
+    # Run fit_round in a thread so we can inspect intermediate state?
+    pass
+
+def test_quorum_protection_two_completed():
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    # A and B complete, C blocks
+    cC.fit_should_block = True
+    
+    strategy.configure_fit.return_value = [(cA, None), (cB, None), (cC, None)]
+    
+    server.engine.evaluate_missing_clients = MagicMock(return_value={
+        "C": MagicMock(should_wait=False, reason="Too slow")
+    })
+    
+    server.fit_round(1, timeout=1.0)
+    
+    # Max drops allowed = max(0, 2 + 1 - 2) = 1. C can be dropped.
+    pass

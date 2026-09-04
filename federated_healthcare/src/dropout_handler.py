@@ -202,12 +202,19 @@ class AdaptiveServer(Server):
                         decision = decisions.get(cid)
                         
                         if decision and not decision.should_wait:
-                            print(f"[AdaptiveServer] Engine decision: DROP client {cid} ({decision.reason})")
-                            futures_to_cancel.append(future)
+                            futures_to_cancel.append((future, client_proxy, decision.reason))
                     
-                    for future in futures_to_cancel:
-                        client_proxy, _ = future_to_client.pop(future)
+                    # Quorum protection logic
+                    max_drops_allowed = max(0, len(results) + len(future_to_client) - self.min_clients)
+                    
+                    while len(futures_to_cancel) > max_drops_allowed:
+                        retained_future, cp, reason = futures_to_cancel.pop()
+                        print(f"[AdaptiveServer] Quorum protection prevented dropping client {cp.cid} despite decision: {reason}")
+                    
+                    for future, client_proxy, reason in futures_to_cancel:
+                        future_to_client.pop(future)
                         future.cancel()
+                        print(f"[AdaptiveServer] Engine decision: DROP client {client_proxy.cid} ({reason})")
                         self.engine.record_straggler_drop(str(client_proxy.cid))
                         failures.append(Exception("Dropped by Adaptive Dropout Engine"))
                         self._record_participation(str(client_proxy.cid), success=False)
