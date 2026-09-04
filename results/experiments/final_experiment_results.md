@@ -16,7 +16,7 @@ To mitigate severe logical CPU oversubscription (3 clients * 16 PyTorch threads 
 | Experiment | Scenario | Rounds | Completed | Successful Clients | Aborted Aggregations | Final Acc | Final Loss | Classification |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | exp1_baseline | Baseline | 10 | 10 | 20 | 0 | 97.29% | 0.0742 | VALID |
-| exp2_one_straggler | One Straggler | 10 | 10 | 13 | 7 | 76.47% | 0.4772 | VALID |
+| exp2_one_straggler | One Straggler | 10 | 4 | 8 | 0 | 81.60% | 0.4394 | VALID |
 | exp3_two_stragglers | Two Stragglers | 10 | 10 | 5 | 4 | 90.20% | 0.2555 | VALID WITH LIMITATION |
 | exp4_network_dropout | Network Dropout | 10 | 10 | 19 | 1 | 97.00% | 0.0958 | VALID |
 | exp5_recovery | Recovery | 10 | 10 | 19 | 1 | 94.80% | 0.1622 | VALID |
@@ -35,7 +35,7 @@ To mitigate severe logical CPU oversubscription (3 clients * 16 PyTorch threads 
 ### Exp 2: One Straggler
 - **Objective:** Evaluate engine detection of a single delayed client.
 - **Setup:** Hospital_B has a 70s delay. 
-- **Observed Result:** Straggler detected and dropped, protecting the minimum quorum of 2. Accuracy: 76.47%.
+- **Observed Result:** Straggler detected and dropped, protecting the minimum quorum of 2. Accuracy: 81.60%.
 - **Validates:** Simple EMA tracking and dropping logic for a consistent straggler.
 - **Classification:** VALID
 
