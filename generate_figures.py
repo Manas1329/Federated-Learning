@@ -67,19 +67,23 @@ def plot_fig1():
     bars = ax.bar(x, accuracies, color=colors, edgecolor='black', width=0.5, zorder=3)
     
     # Add values on top (styling from old Fig 3)
-    for bar in bars:
+    for i, bar in enumerate(bars):
         height = bar.get_height()
-        ax.annotate(f'{height:.2f}%',
+        label_text = f'{height:.2f}%'
+        if exp_order[i] == 'exp2_one_straggler':
+            label_text += '\n(4/10 rounds)'
+        
+        ax.annotate(label_text,
                     xy=(bar.get_x() + bar.get_width() / 2, height),
                     xytext=(0, 3),  
                     textcoords="offset points",
-                    ha='center', va='bottom', fontsize=11)
+                    ha='center', va='bottom', fontsize=10)
     
     ax.set_ylabel('Final Accuracy (%)')
     ax.set_title('Final Accuracy Across Tested Scenarios')
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
-    ax.set_ylim(0, 105)
+    ax.set_ylim(0, 110)
     ax.grid(axis='y', linestyle='--', alpha=0.7, zorder=0)
     
     from matplotlib.patches import Patch
