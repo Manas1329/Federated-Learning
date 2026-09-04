@@ -55,6 +55,22 @@ class AdaptiveServer(Server):
         self.busy_clients = set()
         self._busy_lock = threading.Lock()
 
+    def _filter_drop_candidates_for_quorum(self, drop_candidates: List[Tuple], num_completed: int, num_outstanding: int) -> List[Tuple]:
+        """
+        Ensures that dropping candidates will not prevent the round from reaching minimum_quorum.
+        Returns the subset of drop_candidates that can be safely dropped.
+        """
+        max_drops_allowed = max(0, num_completed + num_outstanding - self.min_clients)
+        
+        candidates_to_drop = list(drop_candidates)
+        while len(candidates_to_drop) > max_drops_allowed:
+            retained = candidates_to_drop.pop()
+            cp = retained[1]
+            reason = retained[2]
+            print(f"[AdaptiveServer] Quorum protection prevented dropping client {cp.cid} despite decision: {reason}")
+            
+        return candidates_to_drop
+
     def fit_round(
         self,
         server_round: int,
@@ -205,11 +221,11 @@ class AdaptiveServer(Server):
                             futures_to_cancel.append((future, client_proxy, decision.reason))
                     
                     # Quorum protection logic
-                    max_drops_allowed = max(0, len(results) + len(future_to_client) - self.min_clients)
-                    
-                    while len(futures_to_cancel) > max_drops_allowed:
-                        retained_future, cp, reason = futures_to_cancel.pop()
-                        print(f"[AdaptiveServer] Quorum protection prevented dropping client {cp.cid} despite decision: {reason}")
+                    futures_to_cancel = self._filter_drop_candidates_for_quorum(
+                        futures_to_cancel,
+                        num_completed=len(results),
+                        num_outstanding=len(future_to_client)
+                    )
                     
                     for future, client_proxy, reason in futures_to_cancel:
                         future_to_client.pop(future)
