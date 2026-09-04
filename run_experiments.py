@@ -16,6 +16,7 @@ def run_experiment(
     run_number: int,
     num_rounds: int = 10,
     adaptive_dropout_enabled: bool = True,
+    fixed_deadline_control: bool = False,
     dropout_hard_deadline: float = 60.0,
     round_timeout: float = 300.0,
     artificial_delays: dict = None,
@@ -43,6 +44,7 @@ def run_experiment(
         "USE_DP": 0,
         "USE_QUANTIZATION": 1,
         "ADAPTIVE_DROPOUT_ENABLED": int(adaptive_dropout_enabled),
+        "FIXED_DEADLINE_CONTROL": int(fixed_deadline_control),
         "DROPOUT_HARD_DEADLINE": dropout_hard_deadline,
         "ROUND_TIMEOUT": round_timeout,
         "MIN_CLIENTS": 2,
@@ -62,6 +64,7 @@ def run_experiment(
     env["USE_DP"] = str(config["USE_DP"])
     env["USE_QUANTIZATION"] = str(config["USE_QUANTIZATION"])
     env["ADAPTIVE_DROPOUT_ENABLED"] = str(config["ADAPTIVE_DROPOUT_ENABLED"])
+    env["FIXED_DEADLINE_CONTROL"] = str(config["FIXED_DEADLINE_CONTROL"])
     env["DROPOUT_HARD_DEADLINE"] = str(config["DROPOUT_HARD_DEADLINE"])
     env["ROUND_TIMEOUT"] = str(config["ROUND_TIMEOUT"])
     
@@ -190,7 +193,7 @@ if __name__ == "__main__":
 
     experiments_to_run = [args.exp] if args.exp != "all" else [
         "exp1_baseline", "exp2_one_straggler", "exp3_two_stragglers", "exp4_network_dropout",
-        "exp5_recovery", "exp6_adaptive_off", "exp7_nonstationary"
+        "exp5_recovery", "exp6_adaptive_off", "exp7_nonstationary", "exp8_fixed_deadline"
     ]
 
     for exp in experiments_to_run:
@@ -214,5 +217,7 @@ if __name__ == "__main__":
                 run_experiment("exp6_adaptive_off", i, num_rounds=10, adaptive_dropout_enabled=False, artificial_delays={"Hospital_B": 70})
             elif exp == "exp7_nonstationary":
                 run_experiment("exp7_nonstationary", i, num_rounds=10, nonstationary_delays={"Hospital_C": {3: 70, 7: 70}})
+            elif exp == "exp8_fixed_deadline":
+                run_experiment("exp8_fixed_deadline", i, num_rounds=10, adaptive_dropout_enabled=False, fixed_deadline_control=True, artificial_delays={"Hospital_B": 70})
 
 

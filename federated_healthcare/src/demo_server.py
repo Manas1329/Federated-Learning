@@ -195,7 +195,8 @@ server = AdaptiveServer(
     k=1.0,
     suffix=SUFFIX,
     models_dir=MODEL_DIR,
-    adaptive_dropout_enabled=(os.environ.get("ADAPTIVE_DROPOUT_ENABLED", "1") == "1")
+    adaptive_dropout_enabled=(os.environ.get("ADAPTIVE_DROPOUT_ENABLED", "1") == "1"),
+    fixed_deadline_control=(os.environ.get("FIXED_DEADLINE_CONTROL", "0") == "1")
 )
 
 # ------------------------------------------------------------------

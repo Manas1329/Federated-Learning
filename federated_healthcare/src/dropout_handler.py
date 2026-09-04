@@ -29,7 +29,8 @@ class AdaptiveServer(Server):
         k: float = 1.0,
         suffix: str = "a_pure",
         models_dir: str = "../models",
-        adaptive_dropout_enabled: bool = True
+        adaptive_dropout_enabled: bool = True,
+        fixed_deadline_control: bool = False
     ):
         super().__init__(client_manager=client_manager, strategy=strategy)
         self.target_clients = target_clients
@@ -38,6 +39,7 @@ class AdaptiveServer(Server):
         self.suffix = suffix
         self.models_dir = models_dir
         self.adaptive_dropout_enabled = adaptive_dropout_enabled
+        self.fixed_deadline_control = fixed_deadline_control
         
         self.engine = AdaptiveDropoutDecisionEngine(
             hard_deadline=hard_deadline,
@@ -209,6 +211,18 @@ class AdaptiveServer(Server):
                         self.engine.record_straggler_drop(str(client_proxy.cid))
                         failures.append(Exception("Dropped by Adaptive Dropout Engine"))
                         self._record_participation(str(client_proxy.cid), success=False)
+                        
+                elif future_to_client and self.fixed_deadline_control:
+                    if self.engine.get_elapsed_time() >= self.engine.hard_deadline:
+                        if len(results) >= self.min_clients:
+                            futures_to_cancel = list(future_to_client.keys())
+                            for future in futures_to_cancel:
+                                client_proxy, _ = future_to_client.pop(future)
+                                future.cancel()
+                                print(f"[AdaptiveServer] Fixed deadline: DROP client {client_proxy.cid}")
+                                self.engine.record_straggler_drop(str(client_proxy.cid))
+                                failures.append(Exception("Dropped by Fixed Deadline Control"))
+                                self._record_participation(str(client_proxy.cid), success=False)
                         
                 if future_to_client and timeout and self.engine.get_elapsed_time() >= timeout:
                         print(f"\n[AdaptiveServer] Hard round timeout ({timeout}s) expired! Canceling remaining.")
