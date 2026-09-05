@@ -1,0 +1,8 @@
+experiment,run,scenario,adaptive_dropout,configured_rounds,completed_rounds,successful_client_rounds,failed_client_rounds,dropped_client_rounds,skipped_rounds,aborted_aggregations,final_accuracy,final_loss,runtime_seconds,grpc_errors,classification,notes
+exp1_baseline,run_01,Baseline,ON,10,10,20,10,N/A,0,0,97.29,0.0742,N/A,0,VALID,
+exp2_one_straggler,run_04,One Straggler,ON,10,4,8,3,N/A,6,0,81.60,0.4394,508,0,VALID,Graceful timeout at 600s; Quorum protection preserved minimum quorum
+exp3_two_stragglers,run_05,Two Stragglers,ON,10,10,5,11,N/A,4,4,90.20,0.2555,N/A,0,VALID WITH LIMITATION,CPU contention caused aborted rounds; 6 successful aggregations / 4 aborted aggregations vs 5 successful client-rounds
+exp4_network_dropout,run_01,Network Dropout,ON,10,10,19,3,N/A,0,1,97.00,0.0958,N/A,0,VALID,CPU contention caused aborted rounds
+exp5_recovery,run_01,Recovery,ON,10,10,19,11,N/A,0,1,94.80,0.1622,N/A,0,VALID,Transport-level reconnection successful but client received new CID (no logical continuity); CPU contention caused aborted rounds
+exp6_adaptive_off,run_01,Adaptive Off,OFF,10,10,30,0,N/A,0,0,97.40,0.0935,N/A,0,VALID,
+exp7_nonstationary,run_02,Nonstationary,ON,10,10,8,9,N/A,3,4,91.87,0.2175,N/A,0,VALID WITH LIMITATION,CPU contention caused aborted rounds; adaptive behavior observed as intended

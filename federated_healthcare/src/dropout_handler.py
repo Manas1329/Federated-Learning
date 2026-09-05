@@ -3,13 +3,14 @@ import time
 import pandas as pd
 import concurrent.futures
 import grpc
+import threading
 from typing import List, Tuple, Dict, Optional, Union
 from flwr.server import Server
 from flwr.common import FitRes, EvaluateRes, DisconnectRes, FitIns, EvaluateIns
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import Strategy
 
-from dropout_engine import AdaptiveDropoutDecisionEngine, ClientState
+from federated_healthcare.src.dropout_engine import AdaptiveDropoutDecisionEngine, ClientState
 
 class AdaptiveServer(Server):
     """
@@ -27,7 +28,9 @@ class AdaptiveServer(Server):
         beta: float = 0.3,
         k: float = 1.0,
         suffix: str = "a_pure",
-        models_dir: str = "../models"
+        models_dir: str = "../models",
+        adaptive_dropout_enabled: bool = True,
+        fixed_deadline_control: bool = False
     ):
         super().__init__(client_manager=client_manager, strategy=strategy)
         self.target_clients = target_clients
@@ -35,6 +38,8 @@ class AdaptiveServer(Server):
         self.total_rounds = total_rounds
         self.suffix = suffix
         self.models_dir = models_dir
+        self.adaptive_dropout_enabled = adaptive_dropout_enabled
+        self.fixed_deadline_control = fixed_deadline_control
         
         self.engine = AdaptiveDropoutDecisionEngine(
             hard_deadline=hard_deadline,
@@ -46,6 +51,25 @@ class AdaptiveServer(Server):
         
         self.csv_path = os.path.join(self.models_dir, f"global_model_records_{self.suffix}.csv")
         self.participation_stats: Dict[str, Dict[str, int]] = {}
+        
+        self.busy_clients = set()
+        self._busy_lock = threading.Lock()
+
+    def _filter_drop_candidates_for_quorum(self, drop_candidates: List[Tuple], num_completed: int, num_outstanding: int) -> List[Tuple]:
+        """
+        Ensures that dropping candidates will not prevent the round from reaching minimum_quorum.
+        Returns the subset of drop_candidates that can be safely dropped.
+        """
+        max_drops_allowed = max(0, num_completed + num_outstanding - self.min_clients)
+        
+        candidates_to_drop = list(drop_candidates)
+        while len(candidates_to_drop) > max_drops_allowed:
+            retained = candidates_to_drop.pop()
+            cp = retained[1]
+            reason = retained[2]
+            print(f"[AdaptiveServer] Quorum protection prevented dropping client {cp.cid} despite decision: {reason}")
+            
+        return candidates_to_drop
 
     def fit_round(
         self,
@@ -65,6 +89,32 @@ class AdaptiveServer(Server):
             print("No clients selected, canceling round.")
             return None
 
+        # Isolated proxy-release wait mechanism to prevent reuse of busy proxies
+        wait_start = time.time()
+        max_wait = 30.0
+        
+        while True:
+            available_instructions = []
+            with self._busy_lock:
+                for proxy, ins in client_instructions:
+                    if str(proxy.cid) not in self.busy_clients:
+                        available_instructions.append((proxy, ins))
+            
+            if len(available_instructions) >= self.min_clients:
+                break
+                
+            if time.time() - wait_start > max_wait:
+                print(f"[AdaptiveServer] Timeout waiting for busy proxies. Proceeding with {len(available_instructions)} available clients.")
+                break
+                
+            time.sleep(1.0)
+            
+        client_instructions = available_instructions
+        
+        if not client_instructions:
+            print("[AdaptiveServer] No available non-busy clients to select.")
+            return None
+
         total_selected = len(client_instructions)
         print(f"\n[AdaptiveServer] Round {server_round}: Selected {total_selected} clients.")
         
@@ -77,12 +127,26 @@ class AdaptiveServer(Server):
         
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
         try:
-            future_to_client = {
-                executor.submit(
+            future_to_client = {}
+            for client_proxy, ins in client_instructions:
+                cid = str(client_proxy.cid)
+                
+                with self._busy_lock:
+                    self.busy_clients.add(cid)
+                    
+                future = executor.submit(
                     client_proxy.fit, ins, timeout=timeout, group_id=server_round
-                ): (client_proxy, ins)
-                for client_proxy, ins in client_instructions
-            }
+                )
+                
+                def make_done_callback(client_id):
+                    def cb(fut):
+                        with self._busy_lock:
+                            if client_id in self.busy_clients:
+                                self.busy_clients.remove(client_id)
+                    return cb
+                    
+                future.add_done_callback(make_done_callback(cid))
+                future_to_client[future] = (client_proxy, ins)
 
             while future_to_client:
                 # Wait for up to 1 second for any future to complete, to allow periodic engine evaluation
@@ -144,8 +208,8 @@ class AdaptiveServer(Server):
                         self.engine.record_not_required(cid)
                     break
 
-                # Ask the engine if we should keep waiting
-                if future_to_client:
+                # Ask the engine if we should keep waiting (if enabled)
+                if future_to_client and self.adaptive_dropout_enabled:
                     decisions = self.engine.evaluate_missing_clients()
                     
                     futures_to_cancel = []
@@ -154,17 +218,36 @@ class AdaptiveServer(Server):
                         decision = decisions.get(cid)
                         
                         if decision and not decision.should_wait:
-                            print(f"[AdaptiveServer] Engine decision: DROP client {cid} ({decision.reason})")
-                            futures_to_cancel.append(future)
+                            futures_to_cancel.append((future, client_proxy, decision.reason))
                     
-                    for future in futures_to_cancel:
-                        client_proxy, _ = future_to_client.pop(future)
+                    # Quorum protection logic
+                    futures_to_cancel = self._filter_drop_candidates_for_quorum(
+                        futures_to_cancel,
+                        num_completed=len(results),
+                        num_outstanding=len(future_to_client)
+                    )
+                    
+                    for future, client_proxy, reason in futures_to_cancel:
+                        future_to_client.pop(future)
                         future.cancel()
+                        print(f"[AdaptiveServer] Engine decision: DROP client {client_proxy.cid} ({reason})")
                         self.engine.record_straggler_drop(str(client_proxy.cid))
                         failures.append(Exception("Dropped by Adaptive Dropout Engine"))
                         self._record_participation(str(client_proxy.cid), success=False)
                         
-                    if timeout and self.engine.get_elapsed_time() >= timeout:
+                elif future_to_client and self.fixed_deadline_control:
+                    if self.engine.get_elapsed_time() >= self.engine.hard_deadline:
+                        if len(results) >= self.min_clients:
+                            futures_to_cancel = list(future_to_client.keys())
+                            for future in futures_to_cancel:
+                                client_proxy, _ = future_to_client.pop(future)
+                                future.cancel()
+                                print(f"[AdaptiveServer] Fixed deadline: DROP client {client_proxy.cid}")
+                                self.engine.record_straggler_drop(str(client_proxy.cid))
+                                failures.append(Exception("Dropped by Fixed Deadline Control"))
+                                self._record_participation(str(client_proxy.cid), success=False)
+                        
+                if future_to_client and timeout and self.engine.get_elapsed_time() >= timeout:
                         print(f"\n[AdaptiveServer] Hard round timeout ({timeout}s) expired! Canceling remaining.")
                         break
 

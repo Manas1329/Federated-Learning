@@ -158,7 +158,7 @@ print()
 # ------------------------------------------------------------------
 
 import flwr as fl
-from server import (
+from federated_healthcare.src.server import (
     SaveModelStrategy,
     evaluate_metrics_aggregation_fn,
     RESULTS_DIR,
@@ -166,7 +166,7 @@ from server import (
     MODEL_PATH,
     SUFFIX,
 )
-from dropout_handler import AdaptiveServer
+from federated_healthcare.src.dropout_handler import AdaptiveServer
 
 # ------------------------------------------------------------------
 # Build strategy (mirrors existing server.py __main__)
@@ -195,6 +195,8 @@ server = AdaptiveServer(
     k=1.0,
     suffix=SUFFIX,
     models_dir=MODEL_DIR,
+    adaptive_dropout_enabled=(os.environ.get("ADAPTIVE_DROPOUT_ENABLED", "1") == "1"),
+    fixed_deadline_control=(os.environ.get("FIXED_DEADLINE_CONTROL", "0") == "1")
 )
 
 # ------------------------------------------------------------------

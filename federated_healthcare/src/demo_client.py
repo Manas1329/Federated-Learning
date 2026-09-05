@@ -1,4 +1,4 @@
-﻿"""
+"""
 demo_client.py
 ==============
 Multi-laptop live demonstration wrapper for the Federated Learning Client.
@@ -31,7 +31,7 @@ if SRC_DIR not in sys.path:
 # ------------------------------------------------------------------
 # Load .env first (before argparse, so defaults can use env values)
 # ------------------------------------------------------------------
-_BASE_DIR = os.path.dirname(SRC_DIR)
+_BASE_DIR = os.path.dirname(os.path.dirname(SRC_DIR))
 _ENV_FILE = os.path.join(_BASE_DIR, ".env")
 if os.path.exists(_ENV_FILE):
     with open(_ENV_FILE) as _f:
@@ -165,7 +165,7 @@ import flwr as fl
 # Import HospitalClient from existing client.py
 # client.py reads CLIENT_NAME, SERVER_ADDRESS, DATA_PATH from env
 # which we have already set above
-from client import HospitalClient
+from federated_healthcare.src.client import HospitalClient
 
 print(f"[{CLIENT_NAME}] Data loaded. Connecting to server...")
 print()

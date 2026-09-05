@@ -111,10 +111,13 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             config
         )
 
+        available_clients = client_manager.num_available()
+        sample_size = min(self.min_fit_clients, available_clients)
+
         # Select clients using client_manager passed directly into function
         clients = client_manager.sample(
-            num_clients=self.min_fit_clients,
-            min_num_clients=self.min_fit_clients
+            num_clients=sample_size,
+            min_num_clients=self.min_available_clients
         )
 
         return [
@@ -135,9 +138,12 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             parameters,
             config
         )
+        available_clients = client_manager.num_available()
+        sample_size = min(self.min_evaluate_clients, available_clients)
+
         clients = client_manager.sample(
-            num_clients=self.min_evaluate_clients,
-            min_num_clients=self.min_evaluate_clients
+            num_clients=sample_size,
+            min_num_clients=self.min_available_clients
         )
         return [
             (client, evaluate_ins)
@@ -482,7 +488,7 @@ def evaluate_metrics_aggregation_fn(metrics):
 if __name__ == "__main__":
 
     import math
-    from dropout_handler import AdaptiveServer
+    from federated_healthcare.src.dropout_handler import AdaptiveServer
     
     # Configure TARGET and MIN clients
     TARGET_CLIENTS = int(os.environ.get("TARGET_CLIENTS", "3"))
@@ -492,7 +498,7 @@ if __name__ == "__main__":
         fraction_fit=1.0,
         fraction_evaluate=1.0,
         min_fit_clients=TARGET_CLIENTS,
-        min_evaluate_clients=MIN_CLIENTS,
+        min_evaluate_clients=TARGET_CLIENTS,
         min_available_clients=MIN_CLIENTS,
         evaluate_metrics_aggregation_fn=(
             evaluate_metrics_aggregation_fn

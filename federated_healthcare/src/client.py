@@ -203,6 +203,9 @@ def calculate_payload_size(parameters):
 
 class HospitalClient(fl.client.NumPyClient):
 
+    def get_properties(self, config):
+        return {"client_name": str(CLIENT_NAME)}
+
     def get_parameters(self, config):
 
         return [
@@ -249,6 +252,14 @@ class HospitalClient(fl.client.NumPyClient):
             "server_round",
             0
         )
+
+        # [EXPERIMENT-ONLY] Simulate exact network dropout at specific round
+        if "NETWORK_DROPOUT_ROUND" in os.environ:
+            dropout_round = int(os.environ["NETWORK_DROPOUT_ROUND"])
+            if round_number == dropout_round:
+                print(f"[{CLIENT_NAME}] [EXPERIMENT] Simulating network dropout at round {round_number}. Exiting immediately.")
+                import sys
+                sys.exit(1)
 
         print("\n" + "=" * 60)
         print(f"[{CLIENT_NAME}] Federated Round {round_number}")
@@ -375,6 +386,25 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # TOTAL TRAINING TIME
         # ============================================================
+
+        # [EXPERIMENT-ONLY] Inject artificial delays if configured
+        delay_sec = 0.0
+        if "NONSTATIONARY_DELAYS" in os.environ:
+            ns_delays_str = os.environ["NONSTATIONARY_DELAYS"]
+            # format: "1:10,2:50,3:30"
+            for pair in ns_delays_str.split(","):
+                if ":" in pair:
+                    r_str, d_str = pair.split(":")
+                    if int(r_str.strip()) == round_number:
+                        delay_sec = float(d_str.strip())
+                        break
+        elif "ARTIFICIAL_DELAY_SEC" in os.environ:
+            delay_sec = float(os.environ["ARTIFICIAL_DELAY_SEC"])
+
+        if delay_sec > 0:
+            print(f"[{CLIENT_NAME}] [EXPERIMENT] Injecting artificial delay of {delay_sec} seconds...")
+            time.sleep(delay_sec)
+
 
         total_training_end = time.perf_counter()
 
