@@ -2,8 +2,16 @@ import os
 import re
 import csv
 import json
+import sys
+from pathlib import Path
 
-base_dir = r"d:\Codes\College_Projects\Major Project\Federated-Learning\results\experiments"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from federated_healthcare.src.paths import EXPERIMENTS_RESULTS_DIR
+
+base_dir = EXPERIMENTS_RESULTS_DIR
 experiments = [
     "exp1_baseline",
     "exp2_one_straggler",

@@ -1,12 +1,13 @@
 import unittest
 from unittest.mock import patch
 import sys
-import os
+from pathlib import Path
 
-# Ensure src is in path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from dropout_engine import AdaptiveDropoutDecisionEngine, ClientState, DropoutDecision
+from federated_healthcare.src.dropout_engine import AdaptiveDropoutDecisionEngine, ClientState, DropoutDecision
 
 class TestDropoutEngine(unittest.TestCase):
     
@@ -339,7 +340,7 @@ class TestDropoutEngine(unittest.TestCase):
     def test_26_hard_deadline_and_round_timeout_are_independent(self):
         """TEST 26: Hard deadline and round timeout are independent concepts."""
         self.assertEqual(self.engine.hard_deadline, 60.0)
-        from dropout_handler import AdaptiveServer
+        from federated_healthcare.src.dropout_handler import AdaptiveServer
         from flwr.server.strategy import FedAvg
         from flwr.server.client_manager import SimpleClientManager
         server = AdaptiveServer(
@@ -354,7 +355,7 @@ class TestDropoutEngine(unittest.TestCase):
 
     def test_27_final_model_logging_uses_total_rounds_rather_than_hardcoded_10(self):
         """TEST 27: Final model logging uses total_rounds rather than hardcoded 10."""
-        from dropout_handler import AdaptiveServer
+        from federated_healthcare.src.dropout_handler import AdaptiveServer
         from flwr.server.strategy import FedAvg
         from flwr.server.client_manager import SimpleClientManager
         import pandas as pd

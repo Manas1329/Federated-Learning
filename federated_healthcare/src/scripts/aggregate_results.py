@@ -2,11 +2,18 @@ import os
 import glob
 import pandas as pd
 import json
+import sys
 from pathlib import Path
 
-RESULTS_BASE = Path("results/experiments")
-SUMMARY_CSV = Path("results/experiments/experiment_summary.csv")
-SUMMARY_MD = Path("results/experiments/experiment_summary.md")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from federated_healthcare.src.paths import EXPERIMENTS_RESULTS_DIR
+
+RESULTS_BASE = EXPERIMENTS_RESULTS_DIR
+SUMMARY_CSV = EXPERIMENTS_RESULTS_DIR / "experiment_summary.csv"
+SUMMARY_MD = EXPERIMENTS_RESULTS_DIR / "experiment_summary.md"
 
 def aggregate_results():
     all_runs = []

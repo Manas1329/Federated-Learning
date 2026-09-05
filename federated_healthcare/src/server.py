@@ -488,7 +488,7 @@ def evaluate_metrics_aggregation_fn(metrics):
 if __name__ == "__main__":
 
     import math
-    from dropout_handler import AdaptiveServer
+    from federated_healthcare.src.dropout_handler import AdaptiveServer
     
     # Configure TARGET and MIN clients
     TARGET_CLIENTS = int(os.environ.get("TARGET_CLIENTS", "3"))

@@ -16,11 +16,17 @@ plt.rcParams.update({
     'figure.dpi': 300,
 })
 
-# Paths
-base_dir = r"d:\Codes\College_Projects\Major Project\Federated-Learning\results\experiments"
-figures_dir = os.path.join(base_dir, "figures")
-os.makedirs(figures_dir, exist_ok=True)
-csv_path = os.path.join(base_dir, "final_experiment_results.csv")
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from federated_healthcare.src.paths import EXPERIMENTS_RESULTS_DIR, FIGURES_DIR
+
+csv_path = EXPERIMENTS_RESULTS_DIR / "final_experiment_results.csv"
+figures_dir = FIGURES_DIR
 
 def save_fig(fig, name):
     fig.tight_layout()

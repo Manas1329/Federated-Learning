@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 # Paths are resolved relative to THIS file (federated_healthcare/src/paths.py)
@@ -7,22 +8,36 @@ SRC_DIR = Path(__file__).resolve().parent
 FEDERATED_HEALTHCARE_DIR = SRC_DIR.parent
 PROJECT_ROOT = FEDERATED_HEALTHCARE_DIR.parent
 
+# Inject project root robustly so that `import federated_healthcare` works anywhere
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Script & Test Directories
+SCRIPTS_DIR = SRC_DIR / "scripts"
+TESTS_DIR = SRC_DIR / "tests"
+
 # Core Directories
 DATA_DIR = PROJECT_ROOT / "data"
 MODELS_DIR = FEDERATED_HEALTHCARE_DIR / "models"
 DASHBOARD_DIR = FEDERATED_HEALTHCARE_DIR / "dashboard"
-if "EXPERIMENT_RESULTS_DIR" in os.environ:
-    RESULTS_DIR = Path(os.environ["EXPERIMENT_RESULTS_DIR"])
-else:
-    RESULTS_DIR = DASHBOARD_DIR / "results"
+
+# Results & Plots Output Structure (Centralized)
+RESULTS_DIR = DASHBOARD_DIR / "results"
+ADSM_RESULTS_DIR = RESULTS_DIR / "ADSM_results"
+EXPERIMENTS_RESULTS_DIR = ADSM_RESULTS_DIR / "experiments"
+
 PLOTS_DIR = DASHBOARD_DIR / "plots"
+FIGURES_DIR = PLOTS_DIR / "figures"
 REPORTS_DIR = DASHBOARD_DIR / "classification_reports"
 
 # Ensure core directories exist
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 DASHBOARD_DIR.mkdir(parents=True, exist_ok=True)
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+ADSM_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+EXPERIMENTS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def resolve_data_path(env_data_path: str = None, client_name: str = None) -> Path:

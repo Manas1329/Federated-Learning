@@ -1,13 +1,15 @@
 import sys
-import os
 import time
 import threading
 import pytest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Add src to path to import dropout_handler
-sys.path.append(os.path.join(os.path.dirname(__file__), '../federated_healthcare/src'))
-from dropout_handler import AdaptiveServer
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from federated_healthcare.src.dropout_handler import AdaptiveServer
 from flwr.server.client_proxy import ClientProxy
 from flwr.common import FitRes, Status, Code, Parameters
 
@@ -83,7 +85,7 @@ def test_one_cancelled_client_remains_busy():
         t_val[0] += 31
         return res
 
-    with patch("time.sleep", return_value=None), patch("dropout_handler.time.time", side_effect=fake_time):
+    with patch("time.sleep", return_value=None), patch("federated_healthcare.src.dropout_handler.time.time", side_effect=fake_time):
         server.fit_round(2, timeout=1.0)
     
     assert "C" in server.busy_clients
@@ -120,7 +122,7 @@ def test_two_cancelled_clients_concurrently():
         t_val[0] += 31
         return res
         
-    with patch("time.sleep", return_value=None), patch("dropout_handler.time.time", side_effect=fake_time):
+    with patch("time.sleep", return_value=None), patch("federated_healthcare.src.dropout_handler.time.time", side_effect=fake_time):
         server.fit_round(2, timeout=1.0)
         
     assert "A" not in server.busy_clients
@@ -157,7 +159,7 @@ def test_stale_completion_does_not_corrupt():
         t_val[0] += 31
         return res
         
-    with patch("time.sleep", return_value=None), patch("dropout_handler.time.time", side_effect=fake_time):
+    with patch("time.sleep", return_value=None), patch("federated_healthcare.src.dropout_handler.time.time", side_effect=fake_time):
         server.fit_round(2, timeout=1.0)
     
     time.sleep(0.3)

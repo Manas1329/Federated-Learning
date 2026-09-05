@@ -165,7 +165,7 @@ import flwr as fl
 # Import HospitalClient from existing client.py
 # client.py reads CLIENT_NAME, SERVER_ADDRESS, DATA_PATH from env
 # which we have already set above
-from client import HospitalClient
+from federated_healthcare.src.client import HospitalClient
 
 print(f"[{CLIENT_NAME}] Data loaded. Connecting to server...")
 print()

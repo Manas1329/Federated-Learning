@@ -7,9 +7,16 @@ import platform
 from pathlib import Path
 
 # Paths
-PROJECT_ROOT = Path("d:/Codes/College_Projects/Major Project/Federated-Learning")
-SRC_DIR = PROJECT_ROOT / "federated_healthcare" / "src"
-RESULTS_BASE = PROJECT_ROOT / "results" / "experiments"
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from federated_healthcare.src.paths import EXPERIMENTS_RESULTS_DIR, SRC_DIR
+
+RESULTS_BASE = EXPERIMENTS_RESULTS_DIR
 
 def run_experiment(
     experiment_name: str,

@@ -10,7 +10,7 @@ from flwr.common import FitRes, EvaluateRes, DisconnectRes, FitIns, EvaluateIns
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import Strategy
 
-from dropout_engine import AdaptiveDropoutDecisionEngine, ClientState
+from federated_healthcare.src.dropout_engine import AdaptiveDropoutDecisionEngine, ClientState
 
 class AdaptiveServer(Server):
     """
