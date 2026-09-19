@@ -3,6 +3,7 @@ import os
 import time
 import pandas as pd
 import torch
+import math
 
 # Load environment variables from .env file if present
 if os.path.exists(".env"):
@@ -14,7 +15,6 @@ if os.path.exists(".env"):
                 k = key.strip()
                 if k not in os.environ:
                     os.environ[k] = val.strip()
-
 
 from collections import OrderedDict
 from flwr.common import parameters_to_ndarrays
@@ -85,6 +85,12 @@ round_start_times = {}
 
 class SaveModelStrategy(fl.server.strategy.FedAvg):
 
+    # ---> DACU: ADD INIT TO TRACK WEIGHTS <---
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Default weight is 1.0 (normal training)
+        self.dacu_recovery_weight = 1.0
+
     def configure_fit(
         self,
         server_round,
@@ -100,9 +106,10 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         print(f"Starting Federated Round {server_round}")
         print("=" * 60)
 
-        # Send round number to clients
+        # ---> DACU: INJECT THE WEIGHT INTO THE CLIENT CONFIG <---
         config = {
-            "server_round": server_round
+            "server_round": server_round,
+            "pneumonia_weight": float(self.dacu_recovery_weight)
         }
 
         # Get normal Flower configuration
@@ -144,7 +151,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             for client in clients
         ]
 
-
     # --------------------------------------------------
     # Aggregate Fit
     # --------------------------------------------------
@@ -161,51 +167,32 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         # ==========================================================
         # DEQUANTIZE CLIENT PARAMETERS
         # ==========================================================
-
         dequantized_results = []
 
         if USE_QUANTIZATION:
             for client_proxy, fit_res in results:
-
                 try:
-
                     # Convert Flower Parameters -> NumPy arrays
-                    quantized_parameters = parameters_to_ndarrays(
-                        fit_res.parameters
-                    )
+                    quantized_parameters = parameters_to_ndarrays(fit_res.parameters)
 
                     # INT8 -> FP32
-                    fp32_parameters = dequantize_parameters(
-                        quantized_parameters
-                    )
+                    fp32_parameters = dequantize_parameters(quantized_parameters)
 
                     # Convert FP32 NumPy arrays back to Flower Parameters
-                    fp32_parameters_flower = ndarrays_to_parameters(
-                        fp32_parameters
-                    )
+                    fp32_parameters_flower = ndarrays_to_parameters(fp32_parameters)
 
                     # Replace the INT8 parameters with FP32 parameters
                     fit_res.parameters = fp32_parameters_flower
 
-                    dequantized_results.append(
-                        (
-                            client_proxy,
-                            fit_res
-                        )
-                    )
-
+                    dequantized_results.append((client_proxy, fit_res))
                 except Exception as e:
-
-                    print(
-                        f"Error dequantizing client update: {e}"
-                    )
+                    print(f"Error dequantizing client update: {e}")
         else:
             dequantized_results = results
 
         # ==========================================================
         # FEDAVG
         # ==========================================================
-
         aggregated_parameters, aggregated_metrics = (
             super().aggregate_fit(
                 server_round,
@@ -215,108 +202,72 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         )
 
         # ==========================================================
-        # AGGREGATION TIME
+        # AGGREGATION TIME & METRICS
         # ==========================================================
-
-        aggregation_time = (
-            time.perf_counter()
-            - aggregation_start
-        )
-
-        # ==========================================================
-        # NUMBER OF CLIENTS
-        # ==========================================================
-
-        successful_clients = len(
-            dequantized_results
-        )
-
-        failed_clients = len(
-            failures
-        )
-
-        # ==========================================================
-        # ROUND TIME
-        # ==========================================================
+        aggregation_time = (time.perf_counter() - aggregation_start)
+        successful_clients = len(dequantized_results)
+        failed_clients = len(failures)
 
         if server_round in round_start_times:
-
-            round_time = (
-                time.perf_counter()
-                - round_start_times[server_round]
-            )
-
+            round_time = (time.perf_counter() - round_start_times[server_round])
         else:
-
             round_time = 0
+
+        # ==========================================================
+        # DACU: DISTRIBUTION AUDIT & DYNAMIC CALCULATION
+        # ==========================================================
+        total_normal = 0
+        total_pneumonia = 0
+        
+        # Extract DP counts reported by all successful clients
+        for _, fit_res in results:
+            total_normal += fit_res.metrics.get("normal_count", 0)
+            total_pneumonia += fit_res.metrics.get("pneumonia_count", 0)
+            
+        total = total_normal + total_pneumonia
+        if total > 0:
+            gamma = total_pneumonia / total
+            print("\n" + "=" * 60)
+            print(f"[DACU Server Audit] Surviving Pneumonia Ratio: {gamma*100:.2f}%")
+            
+            tau_safe = 0.50
+            if gamma < tau_safe:
+                # Calculate compensation penalty
+                alpha = 3.0
+                self.dacu_recovery_weight = 1.0 + alpha * math.log(tau_safe / gamma)
+                print(f"[DACU ALERT] Minority class shortage detected (< {tau_safe*100:.0f}%)")
+                print(f"[DACU LOGIC] Broadcasting recovery weight for next round: {self.dacu_recovery_weight:.4f}")
+            else:
+                self.dacu_recovery_weight = 1.0
+                print(f"[DACU LOGIC] Distribution safe. Standard training continues.")
+            print("=" * 60)
 
         # ==========================================================
         # PRINT RESULTS
         # ==========================================================
-
         print("\n")
         print("=" * 60)
-        print(
-            f"Round {server_round} completed"
-        )
+        print(f"Round {server_round} completed")
         print("=" * 60)
-
-        print(
-            f"Successful Clients: "
-            f"{successful_clients}"
-        )
-
-        print(
-            f"Failed Clients: "
-            f"{failed_clients}"
-        )
-
-        print(
-            f"Dequantization + Aggregation Time: "
-            f"{aggregation_time:.4f} sec"
-        )
-
-        print(
-            f"Total Round Time: "
-            f"{round_time:.4f} sec"
-        )
+        print(f"Successful Clients: {successful_clients}")
+        print(f"Failed Clients: {failed_clients}")
+        print(f"Dequantization + Aggregation Time: {aggregation_time:.4f} sec")
+        print(f"Total Round Time: {round_time:.4f} sec")
 
         # ==========================================================
         # SAVE GLOBAL MODEL
         # ==========================================================
-
         if aggregated_parameters is not None:
-
             model = ChestCNN()
-
-            params = parameters_to_ndarrays(
-                aggregated_parameters
-            )
-
-            params_dict = zip(
-                model.state_dict().keys(),
-                params
-            )
-
-            state_dict = OrderedDict(
-                {
-                    k: torch.tensor(v)
-                    for k, v in params_dict
-                }
-            )
-
-            model.load_state_dict(
-                state_dict,
-                strict=True
-            )
+            params = parameters_to_ndarrays(aggregated_parameters)
+            params_dict = zip(model.state_dict().keys(), params)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            
+            model.load_state_dict(state_dict, strict=True)
 
             # Save final global model
             if server_round == TOTAL_ROUNDS:
-
-                torch.save(
-                    model.state_dict(),
-                    MODEL_PATH,
-                )
+                torch.save(model.state_dict(), MODEL_PATH)
 
                 print("\n")
                 print("=" * 60)
@@ -327,7 +278,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         # ==========================================================
         # SAVE ROUND METRICS
         # ==========================================================
-
         round_data = pd.DataFrame(
             [[
                 server_round,
@@ -348,16 +298,11 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         round_data.to_csv(
             ROUND_METRICS_FILE,
             mode="a",
-            header=not os.path.exists(
-                ROUND_METRICS_FILE
-            ),
+            header=not os.path.exists(ROUND_METRICS_FILE),
             index=False
         )
 
-        return (
-            aggregated_parameters,
-            aggregated_metrics
-        )
+        return (aggregated_parameters, aggregated_metrics)
 
 
 # --------------------------------------------------
@@ -366,47 +311,27 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
 def evaluate_metrics_aggregation_fn(metrics):
 
-    total_examples = sum(
-        num_examples
-        for num_examples, _
-        in metrics
-    )
+    total_examples = sum(num_examples for num_examples, _ in metrics)
 
     weighted_accuracy = (
-        sum(
-            num_examples * m["accuracy"]
-            for num_examples, m in metrics
-        )
+        sum(num_examples * m["accuracy"] for num_examples, m in metrics)
         / total_examples
     )
 
     weighted_loss = (
-        sum(
-            num_examples * m["loss"]
-            for num_examples, m in metrics
-        )
+        sum(num_examples * m["loss"] for num_examples, m in metrics)
         / total_examples
     )
 
     # --------------------------------------------------
     # Weighted F1 / Precision / Recall (if clients sent them)
     # --------------------------------------------------
-
     has_f1 = all("f1" in m for _, m in metrics)
 
     if has_f1:
-        weighted_f1 = (
-            sum(num_examples * m["f1"] for num_examples, m in metrics)
-            / total_examples
-        )
-        weighted_precision = (
-            sum(num_examples * m["precision"] for num_examples, m in metrics)
-            / total_examples
-        )
-        weighted_recall = (
-            sum(num_examples * m["recall"] for num_examples, m in metrics)
-            / total_examples
-        )
+        weighted_f1 = sum(num_examples * m["f1"] for num_examples, m in metrics) / total_examples
+        weighted_precision = sum(num_examples * m["precision"] for num_examples, m in metrics) / total_examples
+        weighted_recall = sum(num_examples * m["recall"] for num_examples, m in metrics) / total_examples
     else:
         weighted_f1 = 0.0
         weighted_precision = 0.0
@@ -415,7 +340,6 @@ def evaluate_metrics_aggregation_fn(metrics):
     # --------------------------------------------------
     # Determine round number for CSV
     # --------------------------------------------------
-
     if os.path.exists(METRICS_FILE):
         df_old = pd.read_csv(METRICS_FILE)
         next_round = len(df_old) + 1
@@ -425,18 +349,9 @@ def evaluate_metrics_aggregation_fn(metrics):
     # --------------------------------------------------
     # Save accuracy / loss
     # --------------------------------------------------
-
     df = pd.DataFrame(
-        [[
-            next_round,
-            weighted_accuracy,
-            weighted_loss
-        ]],
-        columns=[
-            "Round",
-            "Accuracy",
-            "Loss"
-        ]
+        [[next_round, weighted_accuracy, weighted_loss]],
+        columns=["Round", "Accuracy", "Loss"]
     )
 
     df.to_csv(
@@ -449,7 +364,6 @@ def evaluate_metrics_aggregation_fn(metrics):
     # --------------------------------------------------
     # Demo-friendly round results banner
     # --------------------------------------------------
-
     print("\n")
     print("=" * 56)
     print(f"  GLOBAL ROUND {next_round} RESULTS")
@@ -472,7 +386,6 @@ def evaluate_metrics_aggregation_fn(metrics):
         "precision": weighted_precision,
         "recall":    weighted_recall,
     }
-
 
 
 # --------------------------------------------------
@@ -526,9 +439,7 @@ if __name__ == "__main__":
         models_dir=MODEL_DIR
     )
 
-    print(
-        "Starting Adaptive Flower Server with Dropout Handling..."
-    )
+    print("Starting Adaptive Flower Server with Dropout Handling...")
 
     fl.server.start_server(
         server_address="0.0.0.0:8080",

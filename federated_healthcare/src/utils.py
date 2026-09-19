@@ -117,3 +117,18 @@ def load_hospital_data(data_path, batch_size=32, img_size=128):
     print(f"Loaded {len(test_dataset)} testing samples")
 
     return trainloader, testloader
+
+
+def load_partitions(client_id="Hospital_A", batch_size=32):
+    """
+    Load data partitions for a hospital client.
+    Returns: trainloader, testloader, num_examples
+    """
+    from paths import resolve_data_path
+    data_path = resolve_data_path(None, client_id)
+    trainloader, testloader = load_hospital_data(data_path, batch_size=batch_size)
+    num_examples = {
+        "trainset": len(trainloader.dataset),
+        "testset": len(testloader.dataset)
+    }
+    return trainloader, testloader, num_examples
