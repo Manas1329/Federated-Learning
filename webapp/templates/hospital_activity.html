@@ -1,0 +1,51 @@
+{% extends "_hospital_base.html" %}
+{% block title %}Activity History{% endblock %}
+{% block page_name %}Activity History{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Local Activity & Audit Trail</h1>
+    <p>Complete record of actions performed from your hospital node.</p>
+</div>
+<div class="card">
+    <div class="card-header">
+        <h3><span class="card-icon">🕐</span> All Activity</h3>
+        <select style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:white;">
+            <option>All Event Types</option>
+            <option>Training</option>
+            <option>Model Uploads</option>
+            <option>Logins</option>
+            <option>Privacy Checks</option>
+            <option>Unlearning</option>
+        </select>
+    </div>
+    <table class="data-table" id="actTable">
+        <thead><tr><th style="width:160px;">Timestamp</th><th style="width:140px;">Event Type</th><th>Description</th><th>Performed By</th><th style="width:80px;">Status</th></tr></thead>
+        <tbody></tbody>
+    </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function load() {
+    const logs = await apiGet('/api/hospital/activity?limit=100');
+    const tbody = document.querySelector('#actTable tbody');
+    const evC = (e) => ({
+        'Login':'badge-primary','Logout':'badge-muted','Training Start':'badge-info','Training Complete':'badge-success','Training Failed':'badge-danger',
+        'Model Upload':'badge-primary','Model Aggregation':'badge-purple','Weights Sent':'badge-info','Unlearning Request':'badge-warning',
+        'Privacy Check':'badge-success','Trust Score Update':'badge-warning','Admin Action':'badge-primary','System Event':'badge-info','Error':'badge-danger'
+    })[e] || 'badge-muted';
+    const stC = (s) => s === 'Success' ? 'badge-success' : s === 'Error' ? 'badge-danger' : s === 'In Progress' ? 'badge-info' : 'badge-warning';
+    tbody.innerHTML = logs.map(l => `
+        <tr>
+            <td style="font-size:12px;">${formatDateTime(l.timestamp)}</td>
+            <td><span class="badge ${evC(l.event_type)}">${l.event_type}</span></td>
+            <td style="font-size:13px;">${l.description}</td>
+            <td style="font-size:12px;font-weight:600;">${l.username || 'System'}</td>
+            <td><span class="badge ${stC(l.status)}">${l.status}</span></td>
+        </tr>
+    `).join('');
+}
+load();
+setInterval(load, 30000);
+</script>
+{% endblock %}

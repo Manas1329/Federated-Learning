@@ -1,0 +1,62 @@
+{% extends "_admin_base.html" %}
+{% block title %}Hospital Clients{% endblock %}
+{% block page_name %}Hospital Clients{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Hospital Client Management</h1>
+    <p>Register, monitor, and manage all federated learning client hospitals in the network.</p>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h3><span class="card-icon">🏥</span> All Hospital Clients</h3>
+        <button class="btn btn-primary" style="width:auto;padding:8px 16px;font-size:12px;" onclick="alert('Add hospital form coming soon')">+ Register New Hospital</button>
+    </div>
+    <table class="data-table" id="hospitalsTable">
+        <thead>
+            <tr>
+                <th>Hospital</th>
+                <th>Location</th>
+                <th>Code</th>
+                <th>Trust Status</th>
+                <th>Trust Score</th>
+                <th>Accuracy</th>
+                <th>Samples</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadHospitals() {
+    const hospitals = await apiGet('/api/admin/hospitals');
+    const tbody = document.querySelector('#hospitalsTable tbody');
+    const statusClass = (s) => ({'Trusted':'badge-success','Suspicious':'badge-warning','Untrusted':'badge-danger','Inactive':'badge-muted'})[s] || 'badge-muted';
+    tbody.innerHTML = hospitals.map(h => `
+        <tr>
+            <td><div class="hospital-cell">
+                <div class="hospital-avatar" style="background:var(--accent);">🏥</div>
+                <div class="hospital-info"><div class="h-name"><strong>${h.name}</strong></div><div class="h-loc">${h.contact_email || 'No contact'}</div></div>
+            </div></td>
+            <td>${h.location || '—'}</td>
+            <td><code style="font-size:11px;background:#f1f5f9;padding:3px 8px;border-radius:4px;">${h.code}</code></td>
+            <td><span class="badge ${statusClass(h.trust_status)}">${h.trust_status}</span></td>
+            <td style="font-weight:700;">${(h.trust_score*100).toFixed(0)}%</td>
+            <td><strong>${h.current_accuracy.toFixed(1)}%</strong></td>
+            <td>${h.total_training_samples.toLocaleString()}</td>
+            <td style="font-size:12px;color:var(--text-secondary);">${formatDateTime(h.last_seen)}</td>
+            <td>
+                <button style="background:#eff6ff;color:var(--accent);border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;margin-right:4px;">Edit</button>
+                <button style="background:#fef3c7;color:#92400e;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;">Trust</button>
+            </td>
+        </tr>
+    `).join('');
+}
+loadHospitals();
+</script>
+{% endblock %}
