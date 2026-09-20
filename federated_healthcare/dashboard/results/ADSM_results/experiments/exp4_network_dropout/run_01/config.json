@@ -1,0 +1,28 @@
+{
+    "experiment_name": "exp4_network_dropout",
+    "run_number": 1,
+    "timestamp": "2026-09-02T00:11:03",
+    "clients": [
+        "Hospital_A",
+        "Hospital_B",
+        "Hospital_C"
+    ],
+    "num_rounds": 10,
+    "local_epochs": 2,
+    "learning_rate": 0.001,
+    "USE_DP": 0,
+    "USE_QUANTIZATION": 1,
+    "ADAPTIVE_DROPOUT_ENABLED": 1,
+    "DROPOUT_HARD_DEADLINE": 60.0,
+    "ROUND_TIMEOUT": 300.0,
+    "MIN_CLIENTS": 2,
+    "artificial_delays": {},
+    "network_dropout_configuration": {
+        "Hospital_C": 2
+    },
+    "nonstationary_delays": {},
+    "reconnect_configuration": {},
+    "random_seed": 42,
+    "device": "cpu",
+    "operating_system": "Windows"
+}
