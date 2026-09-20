@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Relational SIS Database
+  mysql:
+    image: mysql:8.0
+    container_name: sis_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: sis_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./scripts/setup_mysql.sql:/docker-entrypoint-initdb.d/setup_mysql.sql
+
+  # LMS Clickstream Store
+  mongodb:
+    image: mongo:latest
+    container_name: lms_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./scripts/setup_mongodb.js:/docker-entrypoint-initdb.d/setup_mongodb.js
+
+  # Hadoop Ecosystem (Simplified for Prototype)
+  # In a production environment, we'd use separate containers for NameNode, DataNode, Hive, Pig, etc.
+  # For this prototype, we'll use a single-node Hadoop image.
+  hadoop:
+    image: bde2020/hadoop-sandbox:latest
+    container_name: hadoop_master
+    ports:
+      - "9870:9870"  # HDFS NameNode UI
+      - "8088:8088"  # YARN Resource Manager UI
+      - "10000:10000" # Hive Server 2
+    volumes:
+      - ./scripts:/home/scripts
+      - ./data:/home/data
+
+  # Analytics & Dashboard Environment
+  r-environment:
+    image: rocker/tidyverse:latest
+    container_name: r_analytics
+    ports:
+      - "8787:8787" # RStudio Server
+      - "3838:3838" # Shiny App
+    volumes:
+      - ./scripts:/home/rstudio/scripts
+      - ./data:/home/rstudio/data
