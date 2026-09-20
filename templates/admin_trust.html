@@ -1,0 +1,59 @@
+{% extends "_admin_base.html" %}
+{% block title %}Trust & Robustness{% endblock %}
+{% block page_name %}Trust & Robustness{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Trust Score Management</h1>
+    <p>Monitor and manage client reputation scores for robust and trustworthy federated aggregation.</p>
+</div>
+<div class="grid grid-cols-1-2">
+    <div class="card">
+        <div class="card-header"><h3><span class="card-icon">🥧</span> Client Trust Distribution</h3></div>
+        <div class="donut-container" style="flex-direction:column;"><div style="position:relative;width:100%;height:260px;"><canvas id="trustDist"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;"><div id="tdCount" style="font-size:28px;font-weight:800;color:var(--primary);">—</div><div style="font-size:11px;color:var(--text-secondary);">Total Clients</div></div></div>
+        <div class="donut-legend" id="tdLegend" style="margin-top:12px;"></div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3><span class="card-icon">📊</span> Trust Score Matrix</h3></div>
+        <table class="data-table" id="trustTable"><thead><tr><th>Hospital</th><th>Trust Score</th><th>Status</th><th>Contribution Quality</th><th>Action</th></tr></thead><tbody></tbody></table>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadTrust() {
+    const dist = await apiGet('/api/admin/trust-distribution');
+    const colors = ['#10b981','#f59e0b','#ef4444','#94a3b8'];
+    const labels = ['Trusted (>0.75)','Suspicious (0.40–0.75)','Untrusted (<0.40)','Inactive'];
+    const counts = [dist.trusted.count, dist.suspicious.count, dist.untrusted.count, dist.inactive.count];
+    const total = counts.reduce((a,b)=>a+b,0);
+    document.getElementById('tdCount').textContent = total;
+    drawDoughnutChart('trustDist', labels, counts, colors);
+    document.getElementById('tdLegend').innerHTML = labels.map((l,i)=>`<div class="legend-item"><span class="legend-dot" style="background:${colors[i]}"></span>${l} — ${counts[i]} (${total?((counts[i]/total*100).toFixed(0)):0}%)</div>`).join('');
+
+    const hospitals = await apiGet('/api/admin/hospitals/status');
+    const tbody = document.querySelector('#trustTable tbody');
+    const sClass = (s) => ({'Trusted':'badge-success','Suspicious':'badge-warning','Untrusted':'badge-danger','Inactive':'badge-muted'})[s] || 'badge-muted';
+    tbody.innerHTML = hospitals.map(h => `
+        <tr>
+            <td style="font-weight:600;">${h.name}</td>
+            <td>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="progress-bar" style="width:100px;"><div class="bar-fill" style="width:${h.trust_score*100}%;background:${h.trust_score>0.75?'#10b981':h.trust_score>0.4?'#f59e0b':'#ef4444'};"></div></div>
+                    <strong>${(h.trust_score*100).toFixed(0)}%</strong>
+                </div>
+            </td>
+            <td><span class="badge ${sClass(h.status)}">${h.status}</span></td>
+            <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="progress-bar" style="width:70px;"><div class="bar-fill progress-purple" style="width:${h.update_quality*100}%;"></div></div>
+                    <span style="font-size:11px;">${(h.update_quality*100).toFixed(0)}%</span>
+                </div>
+            </td>
+            <td><button class="btn btn-outline" style="width:auto;padding:4px 10px;font-size:11px;" onclick="alert('Adjust trust score for ${h.name}')">Adjust</button></td>
+        </tr>
+    `).join('');
+}
+loadTrust();
+</script>
+{% endblock %}
