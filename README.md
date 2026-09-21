@@ -23,31 +23,34 @@ Federated-Learning/
 │   ├── dashboard/                        # Web visualization & results
 │   │   ├── app.py                        # Streamlit dashboard
 │   │   ├── classification_reports/       # Evaluation metric report text files
-│   │   │   ├── classification_report_no_quantization.txt
-│   │   │   └── classification_report_quantized.txt
-│   │   ├── results/                      # Raw log CSV files
-│   │   │   ├── metrics_*.csv
-│   │   │   ├── round_metrics_*.csv
-│   │   │   └── Hospital_*_*.csv
+│   │   ├── results/                      # Raw log CSV files (Organized by experiment)
+│   │   │   ├── a_pure/                   # Baseline logs
+│   │   │   ├── b_quantized/              # Quantized logs
+│   │   │   └── c_dp/                     # Diff-Privacy logs
 │   │   └── plots/                        # Output plots
-│   │       ├── comparison_summary.md     # Comparative markdown table
-│   │       ├── payload_reduction.png
-│   │       ├── quantized/                # INT8 run plots
-│   │       └── no_quantization/          # FP32 run plots
-│   ├── models/                           # PyTorch model checkpoints
-│   ├── split_data.py                     # Non-IID dataset splitter utility
+│   │       ├── a_pure/                   
+│   │       ├── b_quantized/              
+│   │       ├── c_dp/                     
+│   │       ├── comparisons/              # Cross-experiment comparative charts
+│   │       └── figures/                  # Final presentation figures
+│   ├── models/                           # PyTorch model checkpoints (.pth)
 │   └── src/                              # Source code directory
+│       ├── scripts/                      # Utility scripts (split_data, graphs, etc)
+│       ├── tests/                        # Regression & Unit tests
 │       ├── client.py                     # FL client implementation (DP-SGD + INT8)
 │       ├── server.py                     # FL server implementation (Adaptive Timeouts)
 │       ├── evaluate.py                   # Global evaluation script
 │       ├── graph.py                      # Chart & metrics compiler script
-│       ├── model.py                      # ChestCNN PyTorch architecture (GPU memory optimized)
+│       ├── model.py                      # ChestCNN PyTorch architecture
 │       ├── quantization.py               # INT8 quantization utilities
 │       ├── dropout_handler.py            # Adaptive dropout handler logic
+│       ├── dropout_engine.py             # Adaptive decision math engine
+│       ├── trust_manager.py              # Trust scoring & outlier tagging
+│       ├── paths.py                      # Centralized path handling
 │       └── utils.py                      # Data loading & helper utilities
 ├── .env                                  # Active environment config (ignored by git)
 ├── .env_example                          # Template for environment configuration
-├── requirements.txt                      # Python dependencies (strict pinned versions)
+├── requirements.txt                      # Python dependencies
 └── Dockerfile                            # Container configuration (optional)
 ```
 
