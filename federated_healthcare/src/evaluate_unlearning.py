@@ -30,6 +30,53 @@ def evaluate_model(model_path, test_loaders):
     
     return acc, prec, rec, f1, cm
 
+
+def evaluate_model_by_clients(model_path, client_ids, map_location=None):
+    """
+    Dynamic variant: loads test data for each client_id in `client_ids`
+    and evaluates the model at `model_path`.
+
+    Args:
+        model_path  : str/Path — path to a .pth checkpoint
+        client_ids  : list of str — e.g. ["Hospital_A", "Hospital_C"]
+        map_location: torch device string, or None for auto-detect
+
+    Returns:
+        (acc, precision, recall, f1, confusion_matrix)
+    """
+    from utils import load_partitions
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+    device = map_location or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = ChestCNN()
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
+    model.to(device)
+
+    all_preds = []
+    all_labels = []
+
+    for cid in client_ids:
+        _, testloader, _ = load_partitions(client_id=cid)
+        with torch.no_grad():
+            for images, labels in testloader:
+                images = images.to(device)
+                outputs = model(images)
+                _, preds = torch.max(outputs, 1)
+                all_preds.extend(preds.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+
+    acc  = accuracy_score(all_labels, all_preds)
+    prec = precision_score(all_labels, all_preds, zero_division=0)
+    rec  = recall_score(all_labels, all_preds, zero_division=0)
+    f1   = f1_score(all_labels, all_preds, zero_division=0)
+    cm   = confusion_matrix(all_labels, all_preds)
+
+    return acc, prec, rec, f1, cm
+
 if __name__ == "__main__":
     print("Loading test datasets for evaluation...")
     

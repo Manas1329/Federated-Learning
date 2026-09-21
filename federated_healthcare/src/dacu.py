@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 from model import ChestCNN
-from client import load_partitions
+# load_partitions is only needed when running dacu.py directly;
+# import is deferred to __main__ to avoid the flwr/tensorflow import chain.
+
 
 def calculate_dacu_weights(surviving_counts, tau_safe=0.50, alpha=3.0):
     """
@@ -51,6 +53,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     
     print("\nLoading surviving client datasets (A & C)...")
+    from client import load_partitions  # deferred — avoids flwr at module load time
     trainloader_a, _, _ = load_partitions(client_id="Hospital_A")
     trainloader_c, _, _ = load_partitions(client_id="Hospital_C")
     

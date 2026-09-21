@@ -258,7 +258,7 @@ class HospitalClient(fl.client.NumPyClient):
         pneumonia_weight = float(config.get("pneumonia_weight", 1.0))
         if pneumonia_weight > 1.0:
             print("\n" + "!" * 60)
-            print(f"[{CLIENT_NAME}] DACU RECOVERY ACTIVATED!")
+            print(f"[{CLIENT_NAME}] DACM RECOVERY ACTIVATED!")
             print(f"[{CLIENT_NAME}] Injecting Pneumonia Loss Weight: {pneumonia_weight:.4f}")
             print("!" * 60 + "\n")
 

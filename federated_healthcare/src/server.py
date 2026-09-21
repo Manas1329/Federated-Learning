@@ -360,7 +360,6 @@ def evaluate_metrics_aggregation_fn(metrics):
         header=not os.path.exists(METRICS_FILE),
         index=False
     )
-
     # --------------------------------------------------
     # Demo-friendly round results banner
     # --------------------------------------------------
@@ -386,8 +385,6 @@ def evaluate_metrics_aggregation_fn(metrics):
         "precision": weighted_precision,
         "recall":    weighted_recall,
     }
-
-
 # --------------------------------------------------
 # Main
 # --------------------------------------------------
