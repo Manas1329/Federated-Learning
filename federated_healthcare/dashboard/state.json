@@ -1,5 +1,5 @@
 {
-  "training_status": "Stopped",
+  "training_status": "Ready",
   "current_round": 0,
   "total_rounds": 5,
   "connected_clients": [],
@@ -22,19 +22,12 @@
   },
   "dropout_info": {
     "expected_clients": 3,
-    "active_clients": 3,
+    "active_clients": 0,
     "dropped_clients": 0,
     "minimum_required": 2,
     "overall_status": "all_active"
   },
-  "events": [
-    {
-      "id": 1788162304681,
-      "time": "01:15:04 PM",
-      "message": "Dashboard marked as Stopped (training was running externally via terminal)",
-      "type": "warn"
-    }
-  ],
+  "events": [],
   "config": {
     "use_quantization": true,
     "use_dp": false,
@@ -43,7 +36,132 @@
     "fl_port": 8080
   },
   "server_pid": null,
-  "trust_data": {},
-  "version": 29,
-  "last_updated": "01:15:04 PM"
+  "trust_data": {
+    "Hospital_A": {
+      "client_id": "Hospital_A",
+      "round": 10,
+      "update_score": 81.7,
+      "training_score": 85.0,
+      "historical_score": 85.7,
+      "reliability_score": 100.0,
+      "trust_score": 85.3,
+      "tag": "TRUSTED",
+      "history": [
+        [
+          1,
+          72.0,
+          "SUSPICIOUS"
+        ],
+        [
+          2,
+          83.3,
+          "TRUSTED"
+        ],
+        [
+          3,
+          80.9,
+          "TRUSTED"
+        ],
+        [
+          4,
+          87.1,
+          "TRUSTED"
+        ],
+        [
+          5,
+          88.2,
+          "TRUSTED"
+        ],
+        [
+          6,
+          88.4,
+          "TRUSTED"
+        ],
+        [
+          7,
+          88.2,
+          "TRUSTED"
+        ],
+        [
+          8,
+          85.9,
+          "TRUSTED"
+        ],
+        [
+          9,
+          85.4,
+          "TRUSTED"
+        ],
+        [
+          10,
+          85.3,
+          "TRUSTED"
+        ]
+      ]
+    },
+    "Hospital_B": {
+      "client_id": "Hospital_B",
+      "round": 10,
+      "update_score": 85.2,
+      "training_score": 85.0,
+      "historical_score": 85.3,
+      "reliability_score": 100.0,
+      "trust_score": 86.6,
+      "tag": "TRUSTED",
+      "history": [
+        [
+          1,
+          78.0,
+          "SUSPICIOUS"
+        ],
+        [
+          2,
+          83.7,
+          "TRUSTED"
+        ],
+        [
+          3,
+          78.1,
+          "SUSPICIOUS"
+        ],
+        [
+          4,
+          88.6,
+          "TRUSTED"
+        ],
+        [
+          5,
+          86.6,
+          "TRUSTED"
+        ],
+        [
+          6,
+          85.9,
+          "TRUSTED"
+        ],
+        [
+          7,
+          85.8,
+          "TRUSTED"
+        ],
+        [
+          8,
+          84.9,
+          "TRUSTED"
+        ],
+        [
+          9,
+          86.9,
+          "TRUSTED"
+        ],
+        [
+          10,
+          86.6,
+          "TRUSTED"
+        ]
+      ]
+    }
+  },
+  "version": 10,
+  "last_updated": "12:48:52 PM"
 }

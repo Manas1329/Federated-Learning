@@ -402,3 +402,7 @@ tempCodeRunnerFile.py
 
 # CSV, PTH, PT and PNG files are intentionally
 # NOT ignored because they contain experiment results.
+
+# Node dependencies
+node_modules/
+**/node_modules/
