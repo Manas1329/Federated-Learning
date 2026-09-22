@@ -47,7 +47,9 @@ USE_DP = os.environ.get("USE_DP", "0") == "1"
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 TOTAL_ROUNDS = int(os.environ.get("NUM_ROUNDS", "10"))
 
-if USE_DP:
+if "EXPERIMENT_NAME" in os.environ:
+    SUFFIX = os.environ["EXPERIMENT_NAME"]
+elif USE_DP:
     SUFFIX = "c_dp"
 elif USE_QUANTIZATION:
     SUFFIX = "b_quantized"

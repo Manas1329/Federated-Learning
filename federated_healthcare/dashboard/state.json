@@ -1,5 +1,5 @@
 {
-  "training_status": "Stopped",
+  "training_status": "Ready",
   "current_round": 0,
   "total_rounds": 5,
   "connected_clients": [],
@@ -22,19 +22,12 @@
   },
   "dropout_info": {
     "expected_clients": 3,
-    "active_clients": 3,
+    "active_clients": 0,
     "dropped_clients": 0,
     "minimum_required": 2,
     "overall_status": "all_active"
   },
-  "events": [
-    {
-      "id": 1788162304681,
-      "time": "01:15:04 PM",
-      "message": "Dashboard marked as Stopped (training was running externally via terminal)",
-      "type": "warn"
-    }
-  ],
+  "events": [],
   "config": {
     "use_quantization": true,
     "use_dp": false,
@@ -43,7 +36,62 @@
     "fl_port": 8080
   },
   "server_pid": null,
-  "trust_data": {},
-  "version": 29,
-  "last_updated": "01:15:04 PM"
+  "trust_data": {
+    "Hospital_A": {
+      "client_id": "Hospital_A",
+      "round": 4,
+      "update_score": 75.0,
+      "training_score": 95.0,
+      "historical_score": 78.2,
+      "reliability_score": 100.0,
+      "trust_score": 84.1,
+      "tag": "TRUSTED",
+      "history": [
+        [
+          2,
+          78.0,
+          "SUSPICIOUS"
+        ],
+        [
+          3,
+          83.7,
+          "TRUSTED"
+        ],
+        [
+          4,
+          84.1,
+          "TRUSTED"
+        ]
+      ]
+    },
+    "Hospital_C": {
+      "client_id": "Hospital_C",
+      "round": 4,
+      "update_score": 75.0,
+      "training_score": 85.0,
+      "historical_score": 78.2,
+      "reliability_score": 100.0,
+      "trust_score": 81.1,
+      "tag": "TRUSTED",
+      "history": [
+        [
+          2,
+          78.0,
+          "SUSPICIOUS"
+        ],
+        [
+          3,
+          83.7,
+          "TRUSTED"
+        ],
+        [
+          4,
+          81.1,
+          "TRUSTED"
+        ]
+      ]
+    }
+  },
+  "version": 3,
+  "last_updated": "03:38:59 PM"
 }

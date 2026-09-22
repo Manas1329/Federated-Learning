@@ -73,7 +73,9 @@ DP_DELTA = float(
 )
 
 # CSV file for recording experiments
-if USE_DP:
+if "EXPERIMENT_NAME" in os.environ:
+    SUFFIX = os.environ["EXPERIMENT_NAME"]
+elif USE_DP:
     SUFFIX = "c_dp"
 elif USE_QUANTIZATION:
     SUFFIX = "b_quantized"
@@ -507,6 +509,7 @@ class HospitalClient(fl.client.NumPyClient):
         # --------------------------------------------------
         # Collect predictions for F1 / Precision / Recall
         # --------------------------------------------------
+        net.to(device)
         net.eval()
         all_labels = []
         all_predictions = []
