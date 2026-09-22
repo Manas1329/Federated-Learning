@@ -6,7 +6,7 @@ import flwr as fl
 import torch
 from collections import OrderedDict
 from model import ChestCNN, train, train_dp, test
-from utils import load_hospital_data
+from utils import load_hospital_data, load_partitions
 
 from quantization import (
     quantize_parameters,
@@ -23,19 +23,27 @@ if os.path.exists(".env"):
                 if k not in os.environ:
                     os.environ[k] = val.strip()
 
+from pathlib import Path
+import sys
 
 # Ensure 'src' package is importable regardless of where the script is run from
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from paths import resolve_data_path, RESULTS_DIR
 
 # --------------------------------------------------
 # Configuration
 # --------------------------------------------------
 
-DATA_PATH = os.environ.get("DATA_PATH", "./data/hospital_A")
-SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
-
 # Get hospital/client name from environment
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Hospital_A")
+
+DATA_PATH = resolve_data_path(
+    os.environ.get("DATA_PATH"),
+    CLIENT_NAME
+)
+
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 
@@ -65,19 +73,18 @@ DP_DELTA = float(
 )
 
 # CSV file for recording experiments
-if USE_DP:
+if "EXPERIMENT_NAME" in os.environ:
+    SUFFIX = os.environ["EXPERIMENT_NAME"]
+elif USE_DP:
     SUFFIX = "c_dp"
 elif USE_QUANTIZATION:
     SUFFIX = "b_quantized"
 else:
     SUFFIX = "a_pure"
 
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-
-RESULTS_DIR = os.path.join(os.path.dirname(SRC_DIR), "dashboard", "results", SUFFIX)
-
-os.makedirs(RESULTS_DIR, exist_ok=True)
-CSV_FILE = os.path.join(RESULTS_DIR, f"{CLIENT_NAME}_{SUFFIX}.csv")
+RESULTS_DIR_SUFFIX = RESULTS_DIR / SUFFIX
+RESULTS_DIR_SUFFIX.mkdir(parents=True, exist_ok=True)
+CSV_FILE = RESULTS_DIR_SUFFIX / f"{CLIENT_NAME}_{SUFFIX}.csv"
 
 
 # --------------------------------------------------
@@ -157,13 +164,23 @@ if not os.path.exists(CSV_FILE):
         writer.writerow([
             "client",
             "round",
+            "record_type",
             "epoch_time_sec",
             "training_time_sec",
             "payload_size_bytes",
             "payload_size_mb",
+            "quantized_payload_size_bytes",
+            "quantized_payload_size_mb",
+            "compression_ratio",
+            "payload_reduction_percent",
             "accuracy",
             "loss",
-            "device"
+            "device",
+            "epsilon",
+            "delta",
+            "dp_noise_multiplier",
+            "dp_max_grad_norm",
+            "evaluation_time_sec"
         ])
 
 
@@ -172,12 +189,9 @@ if not os.path.exists(CSV_FILE):
 # --------------------------------------------------
 
 def calculate_payload_size(parameters):
-
     total_bytes = 0
-
     for param in parameters:
         total_bytes += param.nbytes
-
     return total_bytes
 
 
@@ -187,16 +201,16 @@ def calculate_payload_size(parameters):
 
 class HospitalClient(fl.client.NumPyClient):
 
-    def get_parameters(self, config):
+    def get_properties(self, config):
+        return {"client_name": str(CLIENT_NAME)}
 
+    def get_parameters(self, config):
         return [
             val.cpu().numpy()
             for _, val in net.state_dict().items()
         ]
 
-
     def set_parameters(self, parameters):
-
         params_dict = zip(
             net.state_dict().keys(),
             parameters
@@ -211,7 +225,6 @@ class HospitalClient(fl.client.NumPyClient):
             state_dict,
             strict=True
         )
-
 
     # --------------------------------------------------
     # FIT
@@ -228,11 +241,15 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # GET ROUND NUMBER
         # ============================================================
+        round_number = config.get("server_round", 0)
 
-        round_number = config.get(
-            "server_round",
-            0
-        )
+        # [EXPERIMENT-ONLY] Simulate exact network dropout at specific round
+        if "NETWORK_DROPOUT_ROUND" in os.environ:
+            dropout_round = int(os.environ["NETWORK_DROPOUT_ROUND"])
+            if round_number == dropout_round:
+                print(f"[{CLIENT_NAME}] [EXPERIMENT] Simulating network dropout at round {round_number}. Exiting immediately.")
+                import sys
+                sys.exit(1)
 
         print("\n" + "=" * 60)
         print(f"[{CLIENT_NAME}] Federated Round {round_number}")
@@ -245,71 +262,67 @@ class HospitalClient(fl.client.NumPyClient):
         _trust_score = config.get("trust_score")
         if _trust_score is not None:
             _TAG_EMOJI = {"TRUSTED": "🟢", "SUSPICIOUS": "🟡", "UNTRUSTED": "🔴"}
+            _DEC_EMOJI = {"ACCEPT": "✅", "QUARANTINE": "🔶", "REJECT": "❌"}
             _tag       = config.get("trust_tag", "TRUSTED")
             _emoji     = _TAG_EMOJI.get(_tag, "")
             print()
-            print("=" * 52)
+            print("=" * 56)
             _header = f"{CLIENT_NAME} - CLIENT TRUST STATUS (Round {round_number})"
             print(f"  {_header}")
-            print("=" * 52)
-            print(f"  {'Update Behaviour':<22}: {config.get('trust_update',      0.0):.1f} / 100")
-            print(f"  {'Training Behaviour':<22}: {config.get('trust_training',  0.0):.1f} / 100")
-            print(f"  {'Historical Trust':<22}: {config.get('trust_history',     0.0):.1f} / 100")
-            print(f"  {'Participation':<22}: {config.get('trust_reliability', 0.0):.1f} / 100")
-            print(f"  {'-' * 38}")
-            print(f"  {'Final Trust Score':<22}: {_trust_score:.1f} / 100")
-            print(f"  {'Client Tag':<22}: {_emoji} {_tag}")
-            print("=" * 52)
+            print("=" * 56)
+            # Original Phase-1 fields (preserved)
+            print(f"  {'Update Behaviour':<26}: {config.get('trust_update',      0.0):.1f} / 100")
+            print(f"  {'Training Behaviour':<26}: {config.get('trust_training',  0.0):.1f} / 100")
+            print(f"  {'Historical Trust':<26}: {config.get('trust_history',     0.0):.1f} / 100")
+            print(f"  {'Participation':<26}: {config.get('trust_reliability', 0.0):.1f} / 100")
+            print(f"  {'-' * 44}")
+            print(f"  {'Final Trust Score':<26}: {_trust_score:.1f} / 100")
+            print(f"  {'Client Tag':<26}: {_emoji} {_tag}")
+            # New fields (only display if present)
+            _anom = config.get("anomaly_score")
+            _pre  = config.get("pre_agg_decision")
+            _agg  = config.get("aggregation_decision")
+            if _anom is not None:
+                print(f"  {'-' * 44}")
+                print(f"  {'Anomaly Score':<26}: {_anom:.1f} / 100")
+                print(f"  {'Cosine Similarity':<26}: {config.get('cosine_similarity', 1.0):.4f}")
+                print(f"  {'Distribution Shift':<26}: {config.get('distribution_shift', 0.0):.4f}")
+            if _pre is not None:
+                print(f"  {'Pre-Agg Decision':<26}: {_DEC_EMOJI.get(_pre, '')} {_pre}")
+            if _agg is not None:
+                print(f"  {'Aggregation Decision':<26}: {_DEC_EMOJI.get(_agg, '')} {_agg}")
+            print("=" * 56)
             print()
+
 
         # ============================================================
         # TOTAL TRAINING TIMER
         # ============================================================
-
         total_training_start = time.perf_counter()
 
         # ============================================================
         # TRAINING CONFIGURATION
         # ============================================================
-
         NUM_EPOCHS = 2
-
         epoch_times = []
-
         epsilon = None
+        
+        # --- DACU: Read Recovery Weight from Server ---
+        pneumonia_weight = float(config.get("pneumonia_weight", 1.0))
+        if pneumonia_weight > 1.0:
+            print("\n" + "!" * 60)
+            print(f"[{CLIENT_NAME}] DACM RECOVERY ACTIVATED!")
+            print(f"[{CLIENT_NAME}] Injecting Pneumonia Loss Weight: {pneumonia_weight:.4f}")
+            print("!" * 60 + "\n")
 
         # ============================================================
         # DIFFERENTIAL PRIVACY TRAINING
         # ============================================================
-
         if USE_DP:
-
-            print(
-                f"[{CLIENT_NAME}] "
-                f"DP-SGD enabled"
-            )
-
-            print(
-                f"[{CLIENT_NAME}] "
-                f"Noise Multiplier: "
-                f"{DP_NOISE_MULTIPLIER}"
-            )
-
-            print(
-                f"[{CLIENT_NAME}] "
-                f"Max Gradient Norm: "
-                f"{DP_MAX_GRAD_NORM}"
-            )
-
-            print(
-                f"[{CLIENT_NAME}] "
-                f"Delta: "
-                f"{DP_DELTA}"
-            )
-
-            # --------------------------------------------------------
-            # Train ALL local epochs in ONE DP training session
-            # --------------------------------------------------------
+            print(f"[{CLIENT_NAME}] DP-SGD enabled")
+            print(f"[{CLIENT_NAME}] Noise Multiplier: {DP_NOISE_MULTIPLIER}")
+            print(f"[{CLIENT_NAME}] Max Gradient Norm: {DP_MAX_GRAD_NORM}")
+            print(f"[{CLIENT_NAME}] Delta: {DP_DELTA}")
 
             epoch_start = time.perf_counter()
 
@@ -319,203 +332,142 @@ class HospitalClient(fl.client.NumPyClient):
                 trainloader=global_dp_trainloader,
                 privacy_engine=global_privacy_engine,
                 epochs=NUM_EPOCHS,
-                delta=DP_DELTA
+                delta=DP_DELTA,
+                class_weight=pneumonia_weight  # Passed DACU weight
             )
 
             epoch_end = time.perf_counter()
-
-            epoch_time = (
-                epoch_end -
-                epoch_start
-            )
-
-            # Since DP training currently happens as one session,
-            # record the complete DP training time.
+            epoch_time = (epoch_end - epoch_start)
             epoch_times.append(epoch_time)
 
-            print(
-                f"[{CLIENT_NAME}] "
-                f"DP Training: "
-                f"{NUM_EPOCHS} epochs | "
-                f"{epoch_time:.2f} sec"
-            )
-
-            print(
-                f"[{CLIENT_NAME}] "
-                f"Privacy Budget: "
-                f"epsilon={epsilon:.4f}, "
-                f"delta={DP_DELTA}"
-            )
+            print(f"[{CLIENT_NAME}] DP Training: {NUM_EPOCHS} epochs | {epoch_time:.2f} sec")
+            print(f"[{CLIENT_NAME}] Privacy Budget: epsilon={epsilon:.4f}, delta={DP_DELTA}")
 
         # ============================================================
         # NORMAL TRAINING
         # ============================================================
-
         else:
-
             for epoch in range(NUM_EPOCHS):
-
                 epoch_start = time.perf_counter()
 
                 train(
                     net,
                     trainloader,
-                    epochs=1
+                    epochs=1,
+                    class_weight=pneumonia_weight  # Passed DACU weight
                 )
 
                 epoch_end = time.perf_counter()
+                epoch_time = (epoch_end - epoch_start)
+                epoch_times.append(epoch_time)
 
-                epoch_time = (
-                    epoch_end -
-                    epoch_start
-                )
-
-                epoch_times.append(
-                    epoch_time
-                )
-
-                print(
-                    f"[{CLIENT_NAME}] "
-                    f"Epoch {epoch + 1}/{NUM_EPOCHS}: "
-                    f"{epoch_time:.2f} sec"
-                )
+                print(f"[{CLIENT_NAME}] Epoch {epoch + 1}/{NUM_EPOCHS}: {epoch_time:.2f} sec")
 
         # ============================================================
         # TOTAL TRAINING TIME
         # ============================================================
+        # [EXPERIMENT-ONLY] Inject artificial delays if configured
+        delay_sec = 0.0
+        if "NONSTATIONARY_DELAYS" in os.environ:
+            ns_delays_str = os.environ["NONSTATIONARY_DELAYS"]
+            # format: "1:10,2:50,3:30"
+            for pair in ns_delays_str.split(","):
+                if ":" in pair:
+                    r_str, d_str = pair.split(":")
+                    if int(r_str.strip()) == round_number:
+                        delay_sec = float(d_str.strip())
+                        break
+        elif "ARTIFICIAL_DELAY_SEC" in os.environ:
+            delay_sec = float(os.environ["ARTIFICIAL_DELAY_SEC"])
 
+        if delay_sec > 0:
+            print(f"[{CLIENT_NAME}] [EXPERIMENT] Injecting artificial delay of {delay_sec} seconds...")
+            time.sleep(delay_sec)
         total_training_end = time.perf_counter()
-
-        total_training_time = (
-            total_training_end -
-            total_training_start
-        )
+        total_training_time = (total_training_end - total_training_start)
+        
+        # ============================================================
+        # DACU: CALCULATE CLASS DISTRIBUTION COUNTS
+        # ============================================================
+        normal_count = 0
+        pneumonia_count = 0
+        
+        # Calculate DP-compliant counts directly from the dataloader
+        for _, batch_labels in trainloader:
+            normal_count += int(torch.sum(batch_labels == 0).item())
+            pneumonia_count += int(torch.sum(batch_labels == 1).item())
+            
+        print(f"[{CLIENT_NAME}] Local Distribution - Normal: {normal_count}, Pneumonia: {pneumonia_count}")
 
         # ============================================================
         # GET FP32 PARAMETERS
         # ============================================================
-
-        fp32_parameters = self.get_parameters(
-            config={}
-        )
+        fp32_parameters = self.get_parameters(config={})
 
         # ============================================================
         # CALCULATE FP32 PAYLOAD
         # ============================================================
-
-        original_payload_bytes = calculate_payload_size(
-            fp32_parameters
-        )
-
-        original_payload_mb = (
-            original_payload_bytes /
-            (1024 * 1024)
-        )
+        original_payload_bytes = calculate_payload_size(fp32_parameters)
+        original_payload_mb = (original_payload_bytes / (1024 * 1024))
 
         # ============================================================
         # INT8 QUANTIZATION
         # ============================================================
-
-        (
-            quantized_parameters,
-            quantized_payload_bytes,
-            quantized_payload_mb,
-            compression_ratio,
-            reduction_percent
-        ) = quantize_parameters(
-            fp32_parameters
-        )
+        if USE_QUANTIZATION:
+            (
+                quantized_parameters,
+                quantized_payload_bytes,
+                quantized_payload_mb,
+                compression_ratio,
+                reduction_percent
+            ) = quantize_parameters(fp32_parameters)
+        else:
+            quantized_parameters = fp32_parameters
+            quantized_payload_bytes = original_payload_bytes
+            quantized_payload_mb = original_payload_mb
+            compression_ratio = 1.0
+            reduction_percent = 0.0
 
         # ============================================================
         # PRINT RESULTS
         # ============================================================
-
-        print(
-            f"[{CLIENT_NAME}] "
-            f"Total Training Time: "
-            f"{total_training_time:.2f} sec"
-        )
-
-        print(
-            f"[{CLIENT_NAME}] "
-            f"FP32 Payload Size: "
-            f"{original_payload_mb:.4f} MB"
-        )
-
-        print(
-            f"[{CLIENT_NAME}] "
-            f"INT8 Payload Size: "
-            f"{quantized_payload_mb:.4f} MB"
-        )
-
-        print(
-            f"[{CLIENT_NAME}] "
-            f"Compression Ratio: "
-            f"{compression_ratio:.2f}x"
-        )
-
-        print(
-            f"[{CLIENT_NAME}] "
-            f"Payload Reduction: "
-            f"{reduction_percent:.2f}%"
-        )
+        print(f"[{CLIENT_NAME}] Total Training Time: {total_training_time:.2f} sec")
+        print(f"[{CLIENT_NAME}] FP32 Payload Size: {original_payload_mb:.4f} MB")
+        print(f"[{CLIENT_NAME}] INT8 Payload Size: {quantized_payload_mb:.4f} MB")
+        print(f"[{CLIENT_NAME}] Compression Ratio: {compression_ratio:.2f}x")
+        print(f"[{CLIENT_NAME}] Payload Reduction: {reduction_percent:.2f}%")
 
         # ============================================================
         # SAVE TRAINING RECORD
         # ============================================================
-
-        with open(
-            CSV_FILE,
-            "a",
-            newline=""
-        ) as f:
-
+        with open(CSV_FILE, "a", newline="") as f:
             writer = csv.writer(f)
-
-            for i, epoch_time in enumerate(
-                epoch_times
-            ):
-
+            for i, epoch_time in enumerate(epoch_times):
                 writer.writerow([
-
-                    # Client
-                    CLIENT_NAME,
-
-                    # FL round
-                    round_number,
-
-                    # Epoch/training time
-                    epoch_time,
-
-                    # Total training time
-                    total_training_time,
-
-                    # FP32 payload
-                    original_payload_bytes,
-                    original_payload_mb,
-
-                    # INT8 payload
-                    quantized_payload_bytes,
-                    quantized_payload_mb,
-
-                    # Quantization
-                    compression_ratio,
-                    reduction_percent,
-
-                    # Device
-                    str(device),
-
-                    # DP information
-                    epsilon if epsilon is not None else "",
-                    DP_DELTA if USE_DP else "",
-                    DP_NOISE_MULTIPLIER if USE_DP else "",
-                    DP_MAX_GRAD_NORM if USE_DP else ""
+                    CLIENT_NAME,                                # client
+                    round_number,                               # round
+                    "training",                                 # record_type
+                    epoch_time,                                 # epoch_time_sec
+                    total_training_time,                        # training_time_sec
+                    original_payload_bytes,                     # payload_size_bytes
+                    original_payload_mb,                        # payload_size_mb
+                    quantized_payload_bytes,                    # quantized_payload_size_bytes
+                    quantized_payload_mb,                       # quantized_payload_size_mb
+                    compression_ratio,                          # compression_ratio
+                    reduction_percent,                          # payload_reduction_percent
+                    "",                                         # accuracy
+                    "",                                         # loss
+                    str(device),                                # device
+                    epsilon if epsilon is not None else "",     # epsilon
+                    DP_DELTA if USE_DP else "",                 # delta
+                    DP_NOISE_MULTIPLIER if USE_DP else "",      # dp_noise_multiplier
+                    DP_MAX_GRAD_NORM if USE_DP else "",         # dp_max_grad_norm
+                    ""                                          # evaluation_time_sec
                 ])
 
         # ============================================================
         # PARAMETERS TO SEND TO SERVER
         # ============================================================
-
         returned_parameters = (
             quantized_parameters
             if USE_QUANTIZATION
@@ -525,60 +477,36 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # RETURN TO FLOWER SERVER
         # ============================================================
-
         return (
-
             returned_parameters,
-
             len(trainloader.dataset),
-
             {
-
                 # Training information
-                "training_time": float(
-                    total_training_time
-                ),
+                "training_time": float(total_training_time),
                 "client_name": str(CLIENT_NAME),
                 "training_duration": float(total_training_time),
 
                 # FP32 communication
-                "payload_size_mb": float(
-                    original_payload_mb
-                ),
+                "payload_size_mb": float(original_payload_mb),
 
                 # INT8 communication
-                "quantized_payload_mb": float(
-                    quantized_payload_mb
-                ),
+                "quantized_payload_mb": float(quantized_payload_mb),
 
                 # Compression
-                "compression_ratio": float(
-                    compression_ratio
-                ),
-
-                "payload_reduction_percent": float(
-                    reduction_percent
-                ),
+                "compression_ratio": float(compression_ratio),
+                "payload_reduction_percent": float(reduction_percent),
 
                 # Differential Privacy
-                "epsilon": float(
-                    epsilon
-                ) if epsilon is not None else -1.0,
-
-                "delta": float(
-                    DP_DELTA
-                ) if USE_DP else -1.0,
-
-                "dp_noise_multiplier": float(
-                    DP_NOISE_MULTIPLIER
-                ) if USE_DP else 0.0,
-
-                "dp_max_grad_norm": float(
-                    DP_MAX_GRAD_NORM
-                ) if USE_DP else 0.0
+                "epsilon": float(epsilon) if epsilon is not None else -1.0,
+                "delta": float(DP_DELTA) if USE_DP else -1.0,
+                "dp_noise_multiplier": float(DP_NOISE_MULTIPLIER) if USE_DP else 0.0,
+                "dp_max_grad_norm": float(DP_MAX_GRAD_NORM) if USE_DP else 0.0,
+                
+                # ---> DACU METADATA <---
+                "normal_count": float(normal_count),
+                "pneumonia_count": float(pneumonia_count)
             }
         )
-
 
     # --------------------------------------------------
     # EVALUATE
@@ -588,20 +516,16 @@ class HospitalClient(fl.client.NumPyClient):
         from sklearn.metrics import precision_score, recall_score, f1_score
 
         self.set_parameters(parameters)
-
         round_number = config.get("server_round", 0)
-
         evaluation_start = time.perf_counter()
 
         # Run standard loss/accuracy test
-        loss, accuracy = test(
-            net,
-            testloader
-        )
+        loss, accuracy = test(net, testloader)
 
         # --------------------------------------------------
         # Collect predictions for F1 / Precision / Recall
         # --------------------------------------------------
+        net.to(device)
         net.eval()
         all_labels = []
         all_predictions = []
@@ -631,10 +555,7 @@ class HospitalClient(fl.client.NumPyClient):
             average="binary", zero_division=0
         )
 
-        evaluation_time = (
-            time.perf_counter() -
-            evaluation_start
-        )
+        evaluation_time = (time.perf_counter() - evaluation_start)
 
         print(
             f"[{CLIENT_NAME}] "
@@ -648,19 +569,27 @@ class HospitalClient(fl.client.NumPyClient):
 
         # Save evaluation result
         with open(CSV_FILE, "a", newline="") as f:
-
             writer = csv.writer(f)
-
             writer.writerow([
-                CLIENT_NAME,
-                round_number,
-                "",
-                "",
-                "",
-                "",
-                float(accuracy),
-                float(loss),
-                str(device)
+                CLIENT_NAME,            # client
+                round_number,           # round
+                "evaluation",           # record_type
+                "",                     # epoch_time_sec
+                "",                     # training_time_sec
+                "",                     # payload_size_bytes
+                "",                     # payload_size_mb
+                "",                     # quantized_payload_size_bytes
+                "",                     # quantized_payload_size_mb
+                "",                     # compression_ratio
+                "",                     # payload_reduction_percent
+                float(accuracy),        # accuracy
+                float(loss),            # loss
+                str(device),            # device
+                "",                     # epsilon
+                "",                     # delta
+                "",                     # dp_noise_multiplier
+                "",                     # dp_max_grad_norm
+                float(evaluation_time)  # evaluation_time_sec
             ])
 
         return (
@@ -679,13 +608,11 @@ class HospitalClient(fl.client.NumPyClient):
             }
         )
 
-
 # --------------------------------------------------
 # Start Client
 # --------------------------------------------------
 
 if __name__ == "__main__":
-
     fl.client.start_client(
         server_address=SERVER_ADDRESS,
         client=HospitalClient().to_client(),

@@ -5,15 +5,20 @@ import random
 # For reproducible results
 random.seed(42)
 
-# Dataset path
-# Change Line 9 from this:
-# RAW_DATA_DIR = r"C:\Users\lab607\Desktop\FL\Federated-Learning\federated_healthcare\raw\chest_xray"
+from pathlib import Path
+import sys
 
-# To this:
-RAW_DATA_DIR = r"D:\Codes\College Projects\Major Project\Federated-Learning\data\chest_xray\chest_xray\train"
+from src.paths import PROJECT_ROOT, DATA_DIR
+
+# Dataset path
+# By default, assumes the raw kaggle dataset is unzipped at `data/chest_xray/chest_xray/train`
+RAW_DATA_DIR = os.environ.get(
+    "RAW_DATA_DIR", 
+    str(PROJECT_ROOT / "data" / "chest_xray" / "chest_xray" / "train")
+)
 
 # Output folder
-TARGET_BASE_DIR = "data"
+TARGET_BASE_DIR = str(DATA_DIR)
 
 # Number of images for each hospital
 HOSPITAL_SPECS = {

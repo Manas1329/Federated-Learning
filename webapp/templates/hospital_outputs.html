@@ -1,0 +1,283 @@
+{% extends "_hospital_base.html" %}
+{% block title %}My Files &amp; Outputs{% endblock %}
+{% block page_name %}My Files &amp; Outputs{% endblock %}
+{% block content %}
+<style>
+    .browser-wrap{display:grid;grid-template-columns:220px 1fr 1.1fr;gap:14px;height:calc(100vh - 140px);min-height:600px}
+    @media(max-width:1100px){.browser-wrap{grid-template-columns:1fr;height:auto}}
+    .panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(15,23,42,.04);display:flex;flex-direction:column;overflow:hidden}
+    .panel h4{margin:0 0 8px 0;font-size:14px;color:#0f172a;padding-bottom:6px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between}
+    .roots-list{overflow-y:auto;flex:1}
+    .root-item{padding:9px 11px;border-radius:8px;font-size:13px;cursor:pointer;margin-bottom:4px;color:#334155;transition:.1s;display:flex;align-items:center;gap:8px}
+    .root-item:hover{background:#f1f5f9}
+    .root-item.active{background:#eff6ff;color:#1e40af;font-weight:600}
+    .cr-actions{padding:6px 0 8px;border-bottom:1px solid #f1f5f9;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
+    .crumb{color:#2563eb;font-size:12px;cursor:pointer}
+    .crumb-sep{color:#cbd5e1;margin:0 2px}
+    .btn-icon{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;color:#0f172a}
+    .btn-primary{background:#2563eb;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer}
+    .file-list{overflow-y:auto;flex:1;cursor:pointer}
+    .fl-header{display:grid;grid-template-columns:1fr 80px 120px;gap:8px;padding:6px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #f1f5f9;font-weight:600;background:#f8fafc;position:sticky;top:0;z-index:1}
+    .fl-row{display:grid;grid-template-columns:1fr 80px 120px;gap:8px;padding:7px 8px;font-size:12px;color:#334155;border-bottom:1px solid #f8fafc;align-items:center}
+    .fl-row:hover{background:#f8fafc}
+    .fl-row.dir{color:#1d4ed8;font-weight:500}
+    .fl-row.up{color:#64748b;font-style:italic}
+    .ext-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:6px;text-transform:uppercase;background:#f1f5f9;color:#334155}
+    .ext-csv{background:#dcfce7;color:#166534}
+    .ext-png{background:#e0e7ff;color:#3730a3}
+    .ext-pth{background:#fde68a;color:#78350f}
+    .ext-md{background:#fef3c7;color:#92400e}
+    .view-area{overflow:auto;flex:1}
+    .view-empty{color:#94a3b8;text-align:center;padding:40px;font-size:13px}
+    .csv-table{border-collapse:collapse;width:100%;font-size:12px}
+    .csv-table th{background:#f8fafc;padding:7px 10px;text-align:left;border-bottom:2px solid #e2e8f0;position:sticky;top:0;font-weight:600;white-space:nowrap}
+    .csv-table td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155;white-space:nowrap}
+    .csv-wrap{overflow:auto;flex:1;border:1px solid #e2e8f0;border-radius:8px}
+    .image-wrap{display:flex;align-items:center;justify-content:center;padding:16px;flex:1;overflow:auto}
+    .image-wrap img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 6px 18px rgba(15,23,42,.12)}
+    .text-view{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;font-family:'Courier New',monospace;font-size:12px;line-height:1.5;overflow:auto;flex:1;white-space:pre-wrap}
+    .md-view{padding:16px;font-size:13px;line-height:1.6;color:#1e293b;overflow:auto;flex:1}
+    .json-view{font-family:'Courier New',monospace;font-size:12px;background:#f8fafc;padding:12px;border-radius:8px;overflow:auto;flex:1;color:#334155}
+    .upload-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px;margin-bottom:14px}
+    .upload-card h3{margin:0 0 8px 0;font-size:15px;color:#0f172a}
+    .upload-card p{margin:0 0 10px 0;font-size:12px;color:#64748b}
+    .upload-area{border:2px dashed #cbd5e1;border-radius:10px;padding:20px;text-align:center;font-size:13px;color:#64748b;cursor:pointer;transition:.15s}
+    .upload-area:hover{background:#f8fafc;border-color:#2563eb;color:#2563eb}
+    .upload-area input[type=file]{display:none}
+    .summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+    .summary-card{background:#fff;border-radius:12px;padding:12px;border:1px solid #e2e8f0}
+    .summary-card .k{font-size:11px;color:#64748b;text-transform:uppercase}
+    .summary-card .v{font-size:18px;font-weight:700;color:#0f172a;margin-top:4px}
+    .empty-note{font-size:11px;color:#94a3b8;font-style:italic;margin-top:4px}
+    .scope-note{background:#fef3c7;color:#78350f;border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;border:1px solid #fde68a}
+    @media(max-width:900px){.browser-wrap{grid-template-columns:1fr;height:auto;gap:10px}.panel{min-height:340px}}
+</style>
+
+<div class="scope-note"><span style="font-size:18px">🛡️</span> Your files are hospital-scoped &mdash; other hospitals, and even Admin, cannot read your private upload folder. Admin only sees global checkpoints and global results.</div>
+
+<div class="summary-grid">
+    <div class="summary-card">
+        <div class="k">My Uploaded Files</div>
+        <div class="v" id="sumMy">—</div>
+    </div>
+    <div class="summary-card">
+        <div class="k">My Dataset Entries</div>
+        <div class="v" id="sumData">—</div>
+    </div>
+</div>
+
+<div class="upload-card">
+    <h3>📤 Upload Files to My Workspace</h3>
+    <p>Upload datasets, local checkpoints, or custom logs. Size limit: 200 MB per file.</p>
+    <label class="upload-area" for="h_upload">
+        📁 Click to choose files or drag &amp; drop (CSV, PNG, JPG, JSON, .pth, .log, .txt, MD, ZIP)
+        <input id="h_upload" type="file" multiple onchange="hHandleFiles(this.files)">
+    </label>
+    <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+            <div style="font-size:11px;color:#64748b;margin-bottom:4px">Optional subfolder name (e.g. <code>round12_runs</code>)</div>
+            <input type="text" id="h_sub" style="width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;box-sizing:border-box" placeholder="Leave blank for root">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+            <div id="h_filecount" style="font-size:12px;color:#64748b">0 files selected</div>
+            <button class="btn-primary" id="h_upload_btn" onclick="hUpload(this)" disabled>Upload Now</button>
+        </div>
+    </div>
+</div>
+
+<div class="browser-wrap">
+    <div class="panel">
+        <h4>📁 My Roots</h4>
+        <div class="roots-list" id="rootsList"></div>
+        <div class="empty-note" style="padding:8px 4px">Hospital scope only includes your dataset folder and your private uploads.</div>
+    </div>
+    <div class="panel">
+        <h4 id="flt">Files</h4>
+        <div class="cr-actions" id="crumbs"></div>
+        <div class="file-list" id="flist">
+            <div class="view-empty">Pick a root to browse.</div>
+        </div>
+    </div>
+    <div class="panel">
+        <h4 id="vt">
+            <span>Preview / Download</span>
+            <button class="btn-primary" id="dbtn" style="display:none" onclick="doDownload()">⬇ Download</button>
+        </h4>
+        <div id="varea" class="view-area">
+            <div class="view-empty">Select any file to see an inline preview and direct download link.</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let curRoot=null, curPath='', curFile=null;
+function getToken() {
+    const c = document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('access_token='));
+    return c ? decodeURIComponent(c.split('=')[1]).replace('Bearer ','') : '';
+}
+function fetchJSON(url,method='GET',body,tokenRequired=true) {
+    const h = {'Content-Type':'application/json'};
+    const t = getToken();
+    if (t) h['Authorization'] = 'Bearer ' + t;
+    return fetch(url, {method, headers:h, body: body ? JSON.stringify(body) : undefined}).then(r=>r.json());
+}
+function fmtSize(b) {
+    if (b===null||b===undefined) return '';
+    if (b<1024) return b+' B';
+    if (b<1024*1024) return (b/1024).toFixed(1)+' KB';
+    return (b/(1024*1024)).toFixed(2)+' MB';
+}
+function fmtTime(s) { return (s||'').substring(0,16).replace('T',' '); }
+function extB(e) {
+    if (!e) return '';
+    const x = e.toLowerCase().replace('.','');
+    return `<span class="ext-badge ext-${x}">${x}</span>`;
+}
+async function loadSummary() {
+    try {
+        const s = await fetchJSON('/api/hospital/outputs/summary');
+        const my = (s.uploads || []).length;
+        const data = (s.dataset_entries || []).length;
+        document.getElementById('sumMy').textContent = my;
+        document.getElementById('sumData').textContent = data;
+    } catch(e) {}
+}
+async function loadRoots() {
+    try {
+        const r = await fetchJSON('/api/hospital/workspace/roots');
+        document.getElementById('rootsList').innerHTML = (r.roots||[]).map(rt => `
+            <div class="root-item ${rt.key===curRoot?'active':''}" onclick="pickRoot('${rt.key}')">
+                <span>${rt.writable?'📂':'📁'}</span>
+                <div style="flex:1">
+                    <div style="font-weight:500">${rt.label || rt.key}</div>
+                    <div style="font-size:10px;color:#94a3b8">${rt.file_count||0} files · ${rt.writable?'writable':'read-only'}</div>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) {}
+}
+function pickRoot(k) { curRoot = k; curPath = ''; loadRoots(); loadFiles(); }
+async function loadFiles() {
+    if (!curRoot) return;
+    document.getElementById('flt').textContent = 'Files · ' + curRoot;
+    const parts = curPath.split('/').filter(Boolean);
+    let html = `<span class="crumb" onclick="curPath='';loadFiles()">${curRoot}</span>`;
+    let c = '';
+    parts.forEach(p => { c += p + '/'; html += `<span class="crumb-sep">/</span><span class="crumb" onclick="curPath='${c.slice(0,-1)}';loadFiles()">${p}</span>`; });
+    document.getElementById('crumbs').innerHTML = html;
+    try {
+        const r = await fetchJSON('/api/hospital/workspace/ls?root='+encodeURIComponent(curRoot)+'&path='+encodeURIComponent(curPath));
+        const ent = (r.entries||[]).sort((a,b)=>{ if(a.is_dir!==b.is_dir) return a.is_dir?-1:1; return a.name.localeCompare(b.name); });
+        const up = curPath ? `<div class="fl-row up" onclick="curPath='${curPath.split('/').slice(0,-1).join('/')}';loadFiles()"><div>⬆ .. parent</div><div></div><div></div></div>` : '';
+        document.getElementById('flist').innerHTML = '<div class="fl-header"><div>Name</div><div>Size</div><div>Modified</div></div>' + up + ent.map(e=>`
+            <div class="fl-row ${e.is_dir?'dir':''}" onclick="${e.is_dir?`navD('${e.name}')`:`viewSel('${e.name}',${e.viewable},${e.downloadable})`}">
+                <div>${e.is_dir?'📁 ': (e.viewable?'📄 ':'🔒 ')}${e.name}${e.ext?extB(e.ext):''}</div>
+                <div>${e.is_dir?'—':fmtSize(e.size_bytes)}</div>
+                <div style="font-size:11px;color:#94a3b8">${fmtTime(e.modified_at)}</div>
+            </div>
+        `).join('');
+    } catch(e) { showToast(String(e),'error'); }
+}
+function navD(n) { curPath = curPath ? (curPath+'/'+n) : n; loadFiles(); }
+async function viewSel(n,viewable,downloadable) {
+    const p = curPath ? curPath+'/'+n : n;
+    curFile = {name:n, path:p, root:curRoot};
+    const b = document.getElementById('dbtn');
+    b.style.display = downloadable ? 'inline-block' : 'none';
+    b.textContent = '⬇ Download';
+    if (!viewable) {
+        document.getElementById('varea').innerHTML = `<div class="view-empty">Preview unavailable for <b>${n}</b>. Use download to save locally.</div>`;
+        return;
+    }
+    try {
+        const d = await fetchJSON('/api/hospital/workspace/view?root='+encodeURIComponent(curRoot)+'&path='+encodeURIComponent(p));
+        renderView(n,d);
+    } catch(e) { showToast('Preview failed: ' + String(e),'error'); }
+}
+function renderView(name, data) {
+    const area = document.getElementById('varea');
+    if (data.kind === 'image') {
+        const url = '/api/hospital/workspace/download?root='+encodeURIComponent(data.root_key)+'&path='+encodeURIComponent(data.rel_path);
+        area.innerHTML = `<div class="image-wrap"><img src="${url}" alt="${name}"></div>`;
+        return;
+    }
+    if (data.kind === 'csv') {
+        const c = data.columns||[], rows = data.rows||[];
+        area.innerHTML = `<div style="padding:8px 0;font-size:11px;color:#64748b">${rows.length} rows × ${c.length} cols (preview)</div>
+            <div class="csv-wrap"><table class="csv-table"><thead><tr>${c.map(x=>`<th>${x}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${v===null?'':String(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        return;
+    }
+    if (data.kind === 'text') {
+        area.innerHTML = `<div class="text-view"></div>`;
+        area.firstChild.textContent = data.content || '';
+        return;
+    }
+    if (data.kind === 'markdown') {
+        area.innerHTML = `<div class="md-view">${naiveMD(data.content||'')}</div>`;
+        return;
+    }
+    if (data.kind === 'json') {
+        area.innerHTML = `<div class="json-view"></div>`;
+        area.firstChild.textContent = JSON.stringify(data.data, null, 2);
+        return;
+    }
+    area.innerHTML = `<div class="view-empty">No preview available for ${name}</div>`;
+}
+function naiveMD(s) {
+    s = (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    s = s.replace(/`([^`]+)`/g, (_,c)=>`<code>${c}</code>`);
+    const lines = s.split('\n'), out = []; let inCode=false, code=[];
+    for (const l of lines) {
+        if (l.trim().startsWith('```')) { if (inCode){out.push('<pre>'+code.join('\n')+'</pre>');code=[];inCode=false;}else inCode=true; continue; }
+        if (inCode){ code.push(l); continue; }
+        let line = l;
+        line = line.replace(/^###\s+(.+)$/,'<h3>$1</h3>');
+        line = line.replace(/^##\s+(.+)$/,'<h2>$1</h2>');
+        line = line.replace(/^#\s+(.+)$/,'<h1>$1</h1>');
+        line = line.replace(/^[-*]\s+/,'• ');
+        line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2">$1</a>');
+        line = line.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+        out.push(line);
+    }
+    return out.join('\n').split(/\n{2,}/).map(p=>{
+        if (/^<(h|pre)/.test(p.trim())) return p;
+        return '<p>'+p.replace(/\n/g,'<br>')+'</p>';
+    }).join('\n');
+}
+function doDownload() {
+    if (!curFile) return;
+    const url = '/api/hospital/workspace/download?root='+encodeURIComponent(curFile.root)+'&path='+encodeURIComponent(curFile.path)+'&attachment=1';
+    window.open(url,'_blank');
+}
+let _pendingFiles = [];
+function hHandleFiles(list) {
+    _pendingFiles = Array.from(list||[]);
+    document.getElementById('h_filecount').textContent = _pendingFiles.length + ' file(s) selected';
+    document.getElementById('h_upload_btn').disabled = _pendingFiles.length === 0;
+}
+async function hUpload(btn) {
+    if (!_pendingFiles.length) return;
+    btn.disabled = true;
+    try {
+        const fd = new FormData();
+        for (const f of _pendingFiles) fd.append('files', f);
+        const sub = document.getElementById('h_sub').value || '';
+        if (sub) fd.append('sub_folder', sub);
+        const res = await fetch('/api/hospital/uploads', {
+            method:'POST',
+            headers: { 'Authorization': 'Bearer ' + getToken() },
+            body: fd
+        });
+        const d = await res.json();
+        if (d.success) { showToast(`Uploaded ${d.saved.length} file(s)`, 'success'); loadSummary(); loadRoots(); if (curRoot) loadFiles(); }
+        else showToast((d.errors||[])[0] || 'Upload failed', 'error');
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+loadRoots();
+loadSummary();
+</script>
+{% endblock %}

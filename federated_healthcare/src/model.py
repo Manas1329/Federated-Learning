@@ -2,13 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from opacus import PrivacyEngine
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
-
 
 class ChestCNN(nn.Module):
     def __init__(self):
@@ -30,9 +30,16 @@ class ChestCNN(nn.Module):
         x = self.fc2(x)
         return x
 
+def train(net, trainloader, epochs, class_weight=1.0):
+    # ============================================================
+    # DACU DYNAMIC LOSS INJECTION
+    # ============================================================
+    if class_weight > 1.0:
+        weights = torch.tensor([1.0, float(class_weight)], dtype=torch.float32).to(device)
+        criterion = nn.CrossEntropyLoss(weight=weights)
+    else:
+        criterion = nn.CrossEntropyLoss()
 
-def train(net, trainloader, epochs):
-    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
     net.to(device)
@@ -56,35 +63,36 @@ def train(net, trainloader, epochs):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+
 def train_dp(
     private_net,
     optimizer,
     trainloader,
     privacy_engine,
     epochs=1,
-    delta=1e-5
+    delta=1e-5,
+    class_weight=1.0
 ):
-    criterion = nn.CrossEntropyLoss()
+    # ============================================================
+    # DACU DYNAMIC LOSS INJECTION (FOR DP)
+    # ============================================================
+    if class_weight > 1.0:
+        weights = torch.tensor([1.0, float(class_weight)], dtype=torch.float32).to(device)
+        criterion = nn.CrossEntropyLoss(weight=weights)
+    else:
+        criterion = nn.CrossEntropyLoss()
+        
     private_net.train()
 
     for epoch in range(epochs):
-
         for images, labels in trainloader:
-
             images = images.to(device)
             labels = labels.to(device)
 
             optimizer.zero_grad()
-
             outputs = private_net(images)
-
-            loss = criterion(
-                outputs,
-                labels
-            )
-
+            loss = criterion(outputs, labels)
             loss.backward()
-
             optimizer.step()
             
             # Memory optimization: free up tensors immediately
@@ -99,6 +107,7 @@ def train_dp(
     )
 
     return epsilon
+
 
 def test(net, testloader):
     criterion = nn.CrossEntropyLoss()

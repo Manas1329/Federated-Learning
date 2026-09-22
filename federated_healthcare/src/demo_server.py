@@ -1,4 +1,4 @@
-﻿"""
+"""
 demo_server.py
 ==============
 Multi-laptop live demonstration wrapper for the Federated Learning Server.
@@ -76,6 +76,18 @@ parser.add_argument(
     default=None,
     help="Minimum clients required for aggregation (default: ceil(0.6 x target_clients))"
 )
+parser.add_argument(
+    "--dropout_hard_deadline",
+    type=float,
+    default=float(os.environ.get("DROPOUT_HARD_DEADLINE", "180.0" if os.environ.get("USE_DP", "0") == "1" else "60.0")),
+    help="Hard deadline for adaptive dropout engine predictions (seconds)."
+)
+parser.add_argument(
+    "--round_timeout",
+    type=float,
+    default=float(os.environ.get("ROUND_TIMEOUT", "1800.0" if os.environ.get("USE_DP", "0") == "1" else "300.0")),
+    help="Absolute timeout for the Flower server round (seconds)."
+)
 args = parser.parse_args()
 
 PORT           = args.port
@@ -83,9 +95,12 @@ NUM_ROUNDS     = args.num_rounds
 TARGET_CLIENTS = args.target_clients
 MIN_CLIENTS    = args.min_clients if args.min_clients is not None \
                  else max(2, math.ceil(0.6 * TARGET_CLIENTS))
+DROPOUT_HARD_DEADLINE = args.dropout_hard_deadline
+ROUND_TIMEOUT  = args.round_timeout
 
 # Propagate to env so existing server.py / dropout_handler.py picks them up
 os.environ["TARGET_CLIENTS"] = str(TARGET_CLIENTS)
+os.environ["NUM_ROUNDS"] = str(NUM_ROUNDS)
 
 # ------------------------------------------------------------------
 # Detect LAN IP
@@ -128,6 +143,8 @@ print(f"   FL Mode            : {MODE}")
 print(f"   Target Clients     : {TARGET_CLIENTS}")
 print(f"   Minimum Clients    : {MIN_CLIENTS}")
 print(f"   FL Rounds          : {NUM_ROUNDS}")
+print(f"   Dropout Hard Deadline : {DROPOUT_HARD_DEADLINE} sec")
+print(f"   Round Timeout         : {ROUND_TIMEOUT} sec")
 print("=" * 60)
 print(f"\n   Clients should connect with:")
 print(f"   python demo_client.py --server_ip {SERVER_IP} --client_id Hospital_X")
@@ -141,7 +158,7 @@ print()
 # ------------------------------------------------------------------
 
 import flwr as fl
-from server import (
+from federated_healthcare.src.server import (
     SaveModelStrategy,
     evaluate_metrics_aggregation_fn,
     RESULTS_DIR,
@@ -149,7 +166,7 @@ from server import (
     MODEL_PATH,
     SUFFIX,
 )
-from dropout_handler import AdaptiveServer
+from federated_healthcare.src.dropout_handler import AdaptiveServer
 
 # ------------------------------------------------------------------
 # Build strategy (mirrors existing server.py __main__)
@@ -166,26 +183,20 @@ strategy = SaveModelStrategy(
 
 client_manager = fl.server.SimpleClientManager()
 
-# Timeouts -- DP-SGD training is much slower
-if USE_DP:
-    init_grace = 120.0
-    max_grace  = 180.0
-    round_to   = 1800.0
-else:
-    init_grace = 45.0
-    max_grace  = 60.0
-    round_to   = 300.0
-
 server = AdaptiveServer(
     client_manager=client_manager,
     strategy=strategy,
     target_clients=TARGET_CLIENTS,
     min_clients=MIN_CLIENTS,
-    initial_grace_period=init_grace,
-    max_grace_period=max_grace,
-    round_timeout=round_to,
+    total_rounds=NUM_ROUNDS,
+    hard_deadline=DROPOUT_HARD_DEADLINE,
+    alpha=0.3,
+    beta=0.3,
+    k=1.0,
     suffix=SUFFIX,
     models_dir=MODEL_DIR,
+    adaptive_dropout_enabled=(os.environ.get("ADAPTIVE_DROPOUT_ENABLED", "1") == "1"),
+    fixed_deadline_control=(os.environ.get("FIXED_DEADLINE_CONTROL", "0") == "1")
 )
 
 # ------------------------------------------------------------------
@@ -224,7 +235,7 @@ print()
 fl.server.start_server(
     server_address=f"0.0.0.0:{PORT}",
     server=server,
-    config=fl.server.ServerConfig(num_rounds=NUM_ROUNDS),
+    config=fl.server.ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
     grpc_max_message_length=1024 * 1024 * 1024,
 )
 

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Hospital Dashboard{% endblock %} - Federated Healthcare AI</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">🏥</div>
+            <div>
+                <h1>Federated Healthcare Learning</h1>
+                <p>Hospital Client Interface</p>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">Main</div>
+            <a href="/hospital/dashboard" class="nav-item {{ 'active' if request.url.path == '/hospital/dashboard' else '' }}"><span class="nav-icon">🏠</span><span>Dashboard</span></a>
+            <a href="/hospital/training" class="nav-item {{ 'active' if request.url.path == '/hospital/training' else '' }}"><span class="nav-icon">⚡</span><span>Local Training / Client</span></a>
+            <a href="/hospital/performance" class="nav-item {{ 'active' if request.url.path == '/hospital/performance' else '' }}"><span class="nav-icon">📊</span><span>Model Performance</span></a>
+            <a href="/hospital/outputs" class="nav-item {{ 'active' if request.url.path == '/hospital/outputs' else '' }}"><span class="nav-icon">📂</span><span>My Files &amp; Outputs</span></a>
+            <a href="/hospital/privacy" class="nav-item {{ 'active' if request.url.path == '/hospital/privacy' else '' }}"><span class="nav-icon">🛡️</span><span>Privacy &amp; Security</span></a>
+            <a href="/hospital/unlearning" class="nav-item {{ 'active' if request.url.path == '/hospital/unlearning' else '' }}"><span class="nav-icon">🗑️</span><span>Unlearning Request</span></a>
+            <a href="/hospital/activity" class="nav-item {{ 'active' if request.url.path == '/hospital/activity' else '' }}"><span class="nav-icon">🕐</span><span>Activity History</span></a>
+            <a href="/hospital/settings" class="nav-item {{ 'active' if request.url.path == '/hospital/settings' else '' }}"><span class="nav-icon">⚙️</span><span>Settings</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="status-line"><span class="status-dot"></span>Secure Connection</div>
+            <div style="opacity:0.5;">Version 2.1.0</div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <h2>{% block page_name %}Dashboard{% endblock %}</h2>
+                <div class="breadcrumb">Federated Healthcare Node</div>
+            </div>
+            <div class="topbar-right">
+                <div class="topbar-info">
+                    <span class="info-icon">📅</span>
+                    <span id="currentDateTime"></span>
+                    <span style="margin:0 6px;">|</span>
+                    <span id="currentTime"></span>
+                </div>
+                <div class="user-dropdown" onclick="logout()">
+                    <div class="user-avatar">{{ user.full_name[:1] if user else 'D' }}</div>
+                    <div class="user-info">
+                        <div class="user-name">{{ user.full_name if user else 'Dr. Smith' }}</div>
+                        <div class="user-role">Hospital User</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+</div>
+<div id="toastContainer" class="toast-container"></div>
+<script src="/static/js/app.js"></script>
+<script>updateCurrentDateTime();</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

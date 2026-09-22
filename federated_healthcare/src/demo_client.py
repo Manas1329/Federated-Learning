@@ -1,4 +1,4 @@
-﻿"""
+"""
 demo_client.py
 ==============
 Multi-laptop live demonstration wrapper for the Federated Learning Client.
@@ -81,24 +81,8 @@ args = parser.parse_args()
 # Resolve data path
 # ------------------------------------------------------------------
 
-if args.data_path:
-    DATA_PATH = os.path.abspath(args.data_path)
-else:
-    # Auto-resolve: Hospital_A -> data/hospital_A
-    # Matches existing folder names: hospital_A, hospital_B, hospital_c
-    folder_name = args.client_id.lower().replace("-", "_")
-    DATA_PATH = os.path.abspath(
-        os.path.join(_BASE_DIR, "data", folder_name)
-    )
-    # Fallback: if the lowercase folder does not exist, try original casing
-    if not os.path.exists(DATA_PATH):
-        # Try exact match from known folder list
-        data_dir = os.path.join(_BASE_DIR, "data")
-        if os.path.isdir(data_dir):
-            for entry in os.listdir(data_dir):
-                if entry.lower() == folder_name:
-                    DATA_PATH = os.path.join(data_dir, entry)
-                    break
+from paths import resolve_data_path
+DATA_PATH = str(resolve_data_path(args.data_path, args.client_id))
 
 SERVER_ADDRESS = f"{args.server_ip}:{args.port}"
 CLIENT_NAME    = args.client_id
@@ -165,7 +149,7 @@ import flwr as fl
 # Import HospitalClient from existing client.py
 # client.py reads CLIENT_NAME, SERVER_ADDRESS, DATA_PATH from env
 # which we have already set above
-from client import HospitalClient
+from federated_healthcare.src.client import HospitalClient
 
 print(f"[{CLIENT_NAME}] Data loaded. Connecting to server...")
 print()

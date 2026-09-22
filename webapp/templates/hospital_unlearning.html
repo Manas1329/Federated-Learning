@@ -1,0 +1,77 @@
+{% extends "_hospital_base.html" %}
+{% block title %}Unlearning Request{% endblock %}
+{% block page_name %}Unlearning Request{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Submit Unlearning Request (Right-to-be-Forgotten)</h1>
+    <p>Initiate the federated unlearning pipeline to remove specific patient contributions from the global model.</p>
+</div>
+<div class="grid grid-cols-1-2">
+    <div class="card">
+        <div class="card-header"><h3><span class="card-icon">📝</span> New Unlearning Request</h3></div>
+        <form id="ulForm" onsubmit="submitUL(event)">
+            <div class="form-group"><label>Reason for Request *</label><textarea id="ulReason" rows="3" placeholder="Patient withdrew consent, GDPR Article 17, data quality issue, internal policy..." required></textarea></div>
+            <div class="form-group"><label>Patient Identifiers (optional)</label><textarea id="ulPatients" rows="2" placeholder="Comma-separated MRNs or patient hashes..."></textarea></div>
+            <div class="form-group">
+                <label>Scope of Removal</label>
+                <select id="ulScope">
+                    <option>Specific patients only (recommended)</option>
+                    <option>All patients trained in specific rounds</option>
+                    <option>All historical contributions from our hospital</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">🗑️ Submit Unlearning Request</button>
+        </form>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3><span class="card-icon">📋</span> Your Unlearning Requests</h3></div>
+        <div id="ulHistory"></div>
+    </div>
+</div>
+<div class="card" style="margin-top:20px;">
+    <div class="card-header"><h3><span class="card-icon">🔄</span> 5-Step Federated Unlearning Pipeline</h3></div>
+    <div class="workflow">
+        <div class="workflow-step"><div class="step-num step-1">1</div><div class="step-name">Client Identified</div><div class="step-desc">Affected hospital node verified</div></div>
+        <div class="workflow-step"><div class="step-num step-2">2</div><div class="step-name">Historical Contribution Located</div><div class="step-desc">Specific rounds & deltas traced</div></div>
+        <div class="workflow-step"><div class="step-num step-3">3</div><div class="step-name">Contributions Removed</div><div class="step-desc">Selective subtraction</div></div>
+        <div class="workflow-step"><div class="step-num step-4">4</div><div class="step-name">Model Recovery</div><div class="step-desc">Re-aggregate remaining</div></div>
+        <div class="workflow-step"><div class="step-num step-5">5</div><div class="step-name">Verification Pending</div><div class="step-desc">Cryptographic proof generated</div></div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadHistory() {
+    const reqs = await apiGet('/api/hospital/unlearning/requests');
+    const stepNames = ['Client Identified','Historical Located','Contributions Removed','Model Recovery','Verification Pending'];
+    const el = document.getElementById('ulHistory');
+    if (!reqs.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><h4>No prior requests</h4><p>All patient contributions remain active</p></div>'; return; }
+    el.innerHTML = reqs.map(u => `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <strong>🆔 ${u.request_id}</strong>
+                <span class="badge ${u.status === 'Resolved' ? 'badge-success' : u.status === 'Pending' ? 'badge-warning' : 'badge-info'}">${u.status}</span>
+            </div>
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">Submitted: ${formatDateTime(u.submitted_at)}</p>
+            <p style="font-size:13px;margin-bottom:8px;"><strong>Reason:</strong> ${u.reason}</p>
+            <div class="progress-bar" style="margin-bottom:6px;"><div class="bar-fill progress-amber" style="width:${(u.current_step/u.total_steps)*100}%;"></div></div>
+            <p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">Step ${u.current_step} of ${u.total_steps}</p>
+            <div class="ul-steps">
+                ${stepNames.map((s,i)=>`<div class="ul-step ${i<u.current_step-1?'done':i===u.current_step-1?'active':''}"><span class="ul-step-num">${i<u.current_step-1?'✓':i+1}</span>${s}</div>`).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+async function submitUL(e) {
+    e.preventDefault();
+    const r = await apiPost('/api/hospital/unlearning/request', {
+        reason: document.getElementById('ulReason').value,
+        patient_identifiers: document.getElementById('ulPatients').value
+    });
+    showToast(r.message, r.success ? 'success' : 'error');
+    if (r.success) document.getElementById('ulForm').reset();
+    loadHistory();
+}
+loadHistory();
+</script>
+{% endblock %}

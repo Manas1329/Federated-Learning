@@ -20,13 +20,18 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DASHBOARD_DIR = os.path.join(BASE_DIR, "dashboard")
-RESULTS_DIR = os.path.join(DASHBOARD_DIR, "results", SUFFIX)
-PLOTS_DIR = os.path.join(DASHBOARD_DIR, "plots", SUFFIX)
-os.makedirs(PLOTS_DIR, exist_ok=True)
+from pathlib import Path
+import sys
+# Ensure 'src' package is importable regardless of where the script is run from
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-metrics_path = os.path.join(RESULTS_DIR, f"metrics_{SUFFIX}.csv")
+from paths import RESULTS_DIR, PLOTS_DIR, DASHBOARD_DIR
+
+RESULTS_DIR_SUFFIX = RESULTS_DIR / SUFFIX
+PLOTS_DIR_SUFFIX = PLOTS_DIR / SUFFIX
+PLOTS_DIR_SUFFIX.mkdir(parents=True, exist_ok=True)
+
+metrics_path = RESULTS_DIR_SUFFIX / f"metrics_{SUFFIX}.csv"
 
 if not os.path.exists(metrics_path):
     print(f"Metrics file not found: {metrics_path}")
@@ -46,7 +51,7 @@ if 'Round' in df.columns:
     plt.grid(True)
     plt.margins(y=0.15)
     plt.legend(loc='lower right')
-    plt.savefig(os.path.join(PLOTS_DIR, "accuracy.png"))
+    plt.savefig(PLOTS_DIR_SUFFIX / "accuracy.png")
     plt.close()
 
     plt.figure(figsize=(10, 6))
@@ -60,7 +65,81 @@ if 'Round' in df.columns:
     plt.grid(True)
     plt.margins(y=0.15)
     plt.legend(loc='upper right')
-    plt.savefig(os.path.join(PLOTS_DIR, "loss.png"))
+    plt.savefig(PLOTS_DIR_SUFFIX / "loss.png")
     plt.close()
 
-print(f"Generated single-run plots in {PLOTS_DIR}")
+print(f"Generated single-run plots in {PLOTS_DIR_SUFFIX}")
+
+# ---------------------------------------------------------
+# Cross-Hospital Generalization Comparison Plots
+# ---------------------------------------------------------
+comparison_metrics_path = RESULTS_DIR / "comparison_results.csv"
+
+if comparison_metrics_path.exists():
+    import numpy as np
+    df_comp = pd.read_csv(comparison_metrics_path)
+    hospitals = ["Hospital_A", "Hospital_B", "Hospital_C"]
+    
+    # Filter only if hospitals exist in df
+    hospitals = [h for h in hospitals if h in df_comp["hospital"].values]
+    
+    if hospitals:
+        comparison_plots_dir = PLOTS_DIR / "comparisons" / "LvF"
+        comparison_plots_dir.mkdir(parents=True, exist_ok=True)
+        
+        metrics = [
+            ("accuracy", "comparison_accuracy.png", "Accuracy Comparison"),
+            ("f1", "comparison_f1.png", "F1-Score Comparison"),
+            ("precision", "comparison_precision.png", "Precision Comparison"),
+            ("recall", "comparison_recall.png", "Recall Comparison"),
+            ("roc_auc", "comparison_roc_auc.png", "ROC-AUC Comparison"),
+            ("pr_auc", "comparison_pr_auc.png", "PR-AUC Comparison")
+        ]
+        
+        for metric_col, filename, title in metrics:
+            if metric_col not in df_comp.columns:
+                continue
+                
+            a_only_vals = []
+            fed_vals = []
+            
+            for h in hospitals:
+                a_val = df_comp[(df_comp["model"] == "A_only") & (df_comp["hospital"] == h)][metric_col].values
+                f_val = df_comp[(df_comp["model"] == "Federated") & (df_comp["hospital"] == h)][metric_col].values
+                
+                a_only_vals.append(a_val[0] if len(a_val) > 0 and not np.isnan(a_val[0]) else 0)
+                fed_vals.append(f_val[0] if len(f_val) > 0 and not np.isnan(f_val[0]) else 0)
+                
+            x = np.arange(len(hospitals))
+            width = 0.35
+            
+            fig, ax = plt.subplots(figsize=(10, 6))
+            rects1 = ax.bar(x - width/2, a_only_vals, width, label='A_only')
+            rects2 = ax.bar(x + width/2, fed_vals, width, label='Federated')
+            
+            ax.set_ylabel(metric_col.replace("_", " ").title())
+            ax.set_title(title)
+            ax.set_xticks(x)
+            ax.set_xticklabels([h.replace("_", " ") for h in hospitals])
+            ax.legend(loc='lower left' if metric_col in ['accuracy', 'roc_auc', 'pr_auc'] else 'best')
+            ax.grid(axis='y', alpha=0.3)
+            
+            ax.bar_label(rects1, padding=3, fmt='%.3f')
+            ax.bar_label(rects2, padding=3, fmt='%.3f')
+            
+            # Auto-scale y-axis to make differences visible
+            min_val = min(min(a_only_vals, default=0), min(fed_vals, default=0))
+            max_val = max(max(a_only_vals, default=0), max(fed_vals, default=0))
+            if max_val > 0:
+                y_bottom = max(0.0, min_val - 0.05)
+                # Give enough headroom for the text labels on top of the bars
+                y_top = max_val + (0.05 * (max_val - y_bottom)) if max_val != y_bottom else max_val * 1.1
+                if max_val <= 1.0:
+                    y_top = max(y_top, max_val + 0.02) # Minimum headroom for 1.0
+                ax.set_ylim(bottom=y_bottom, top=y_top)
+                
+            fig.tight_layout()
+            plt.savefig(comparison_plots_dir / filename)
+            plt.close()
+            
+        print(f"Generated comparison plots in {comparison_plots_dir}")

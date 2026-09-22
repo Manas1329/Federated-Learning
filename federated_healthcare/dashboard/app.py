@@ -13,17 +13,19 @@ run_mode = st.selectbox(
     ["Pure (FP32)", "Quantized (INT8)", "Quantized + DP"]
 )
 
+from pathlib import Path
+import sys
+# Add parent folder to python path so we can import src.paths
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.paths import RESULTS_DIR
+
 if run_mode == "Pure (FP32)":
     suffix = "a_pure"
 elif run_mode == "Quantized (INT8)":
     suffix = "b_quantized"
 else:
     suffix = "c_dp"
-metrics_path = f"federated_healthcare/dashboard/results/{suffix}/metrics_{suffix}.csv"
-
-# Fallback for root execution
-if not os.path.exists(metrics_path):
-    metrics_path = f"dashboard/results/{suffix}/metrics_{suffix}.csv"
+metrics_path = RESULTS_DIR / suffix / f"metrics_{suffix}.csv"
 
 # Placeholder for real-time metric visualization
 chart_placeholder = st.empty()

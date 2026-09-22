@@ -1,0 +1,80 @@
+{% extends "_hospital_base.html" %}
+{% block title %}Local Training{% endblock %}
+{% block page_name %}Local Training{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Local Training Control</h1>
+    <p>Start, monitor, and manage local model training on your hospital's private dataset.</p>
+</div>
+<div class="grid grid-cols-1-2">
+    <div class="card">
+        <div class="card-header"><h3><span class="card-icon">🚀</span> Training Controls</h3></div>
+        <div class="form-group"><label>Local Epochs per Round</label><input id="localEpochsInp" value="5" type="number"></div>
+        <div class="form-group"><label>Batch Size</label><select><option>32 (Recommended)</option><option>16</option><option>64</option></select></div>
+        <div class="form-group"><label>Differential Privacy</label><select id="useDpInp"><option>Enabled (ε=1.0)</option><option>Disabled</option></select></div>
+        <div class="form-group"><label>INT8 Quantization</label><select><option>Enabled (Compressed)</option><option>Disabled</option></select></div>
+        <div style="display:flex;gap:10px;">
+            <button class="btn btn-primary" onclick="runTraining()">▶️ Start Local Training</button>
+            <button class="btn btn-outline" style="width:auto;" onclick="sendUpdate()">📤 Send Model Update</button>
+        </div>
+        <div style="margin-top:20px;padding:14px;background:#eff6ff;border-radius:8px;border-left:3px solid var(--accent);">
+            <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:4px;">💡 Privacy Guarantee</div>
+            <div style="font-size:12px;color:var(--text-secondary);">Raw patient data never leaves your hospital. Only quantized, differentially-private weight deltas are encrypted and transmitted.</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3><span class="card-icon">📈</span> Training Session Metrics</h3></div>
+        <div class="stats-summary-box" id="trainMetrics" style="margin-bottom:16px;">
+            <div class="stat-row"><span class="stat-name">Current Status</span><span class="stat-val" id="tsStatus">—</span></div>
+            <div class="stat-row"><span class="stat-name">Global Round</span><span class="stat-val" id="tsRound">—</span></div>
+            <div class="stat-row"><span class="stat-name">Local Epochs Completed</span><span class="stat-val" id="tsEpochs">—</span></div>
+            <div class="stat-row"><span class="stat-name">Training Loss</span><span class="stat-val" id="tsLoss">—</span></div>
+            <div class="stat-row"><span class="stat-name">Training Accuracy</span><span class="stat-val" id="tsTrainAcc">—</span></div>
+            <div class="stat-row"><span class="stat-name">Validation Accuracy</span><span class="stat-val" id="tsValAcc">—</span></div>
+            <div class="stat-row"><span class="stat-name">Samples Trained</span><span class="stat-val" id="tsSamples">—</span></div>
+        </div>
+        <div class="chart-container-sm"><canvas id="trainingChart"></canvas></div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadMetrics() {
+    const s = await apiGet('/api/hospital/dashboard/stats');
+    document.getElementById('tsStatus').innerHTML = s.training_status === 'In Progress' ? '<span class="badge badge-warning">In Progress</span>' : '<span class="badge badge-success">'+s.training_status+'</span>';
+    document.getElementById('tsRound').textContent = s.current_round + ' / ' + s.total_rounds;
+    document.getElementById('tsEpochs').textContent = s.local_epochs;
+    document.getElementById('tsLoss').textContent = s.training_loss.toFixed(4);
+    document.getElementById('tsTrainAcc').textContent = s.local_accuracy.toFixed(2) + '%';
+    document.getElementById('tsValAcc').textContent = s.model_accuracy.toFixed(2) + '%';
+    const p = await apiGet('/api/hospital/profile');
+    document.getElementById('tsSamples').textContent = p.total_training_samples.toLocaleString();
+    const perf = await apiGet('/api/hospital/training/performance');
+    drawLineChart('trainingChart', {
+        labels: perf.map(x=>x.round),
+        series: [
+            {label:'Training Accuracy', data: perf.map(x=>x.training_accuracy), color:'#2563eb'},
+            {label:'Validation Accuracy', data: perf.map(x=>x.validation_accuracy), color:'#10b981'}
+        ]
+    });
+}
+async function runTraining() {
+    const res = await apiPost('/api/hospital/training/start', {local_epochs: parseInt(document.getElementById('localEpochsInp').value)});
+    if (res.success) {
+        showToast(res.message, 'success');
+        setTimeout(async () => {
+            const done = await apiPost('/api/hospital/training/complete/'+res.training_round_id);
+            showToast(done.message, 'success');
+            loadMetrics();
+        }, 3000);
+        loadMetrics();
+    } else showToast(res.message, 'warning');
+}
+async function sendUpdate() {
+    const r = await apiPost('/api/hospital/training/send-update');
+    showToast(r.message, r.success ? 'success' : 'error');
+    loadMetrics();
+}
+loadMetrics();
+</script>
+{% endblock %}

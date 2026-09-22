@@ -1,0 +1,410 @@
+{% extends "_admin_base.html" %}
+{% block title %}Operations Center{% endblock %}
+{% block page_name %}Operations Center{% endblock %}
+{% block content %}
+<style>
+    .grid-ops{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-bottom:24px}
+    .op-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+    .op-card h3{margin:0 0 4px 0;font-size:16px;color:#0f172a;display:flex;align-items:center;gap:8px}
+    .op-card .op-desc{font-size:13px;color:#64748b;margin-bottom:14px;line-height:1.5}
+    .op-form{display:flex;flex-direction:column;gap:10px}
+    .op-form label{font-size:12px;color:#475569;font-weight:500}
+    .op-form input,.op-form select,.op-form textarea{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;box-sizing:border-box}
+    .op-form .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btn-primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;transition:.15s}
+    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(37,99,235,.3)}
+    .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+    .btn-danger{background:#dc2626;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:500}
+    .btn-secondary{background:#f1f5f9;color:#0f172a;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:500}
+    .section-title{font-size:18px;font-weight:700;color:#0f172a;margin:0 0 16px 0;padding-bottom:8px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;gap:8px}
+    .process-list{background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 3px rgba(15,23,42,.04);margin-bottom:16px}
+    .proc-row{display:grid;grid-template-columns:1fr 120px 120px 120px 100px;gap:12px;padding:10px 12px;border-bottom:1px solid #f1f5f9;align-items:center;font-size:13px}
+    .proc-row:last-child{border-bottom:none}
+    .proc-row.head{font-weight:600;color:#475569;background:#f8fafc;border-radius:8px}
+    .badge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;display:inline-block}
+    .badge-running{background:#dcfce7;color:#166534}
+    .badge-completed{background:#dbeafe;color:#1e40af}
+    .badge-failed,.badge-stopped{background:#fee2e2;color:#991b1b}
+    .badge-starting{background:#fef3c7;color:#92400e}
+    .log-panel{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:14px;height:240px;overflow-y:auto;font-family:'Courier New',monospace;font-size:12px;line-height:1.5;margin-top:14px}
+    .log-panel .line{margin:2px 0}
+    .toggle-row{display:flex;align-items:center;gap:6px;font-size:13px}
+    .toggle-row input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
+    .empty-state{padding:40px;text-align:center;color:#94a3b8;font-size:14px}
+    .proc-detail-wrap{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+    @media(max-width:900px){.proc-detail-wrap{grid-template-columns:1fr}.proc-row{grid-template-columns:repeat(2,1fr);grid-auto-rows:auto}}
+</style>
+
+<div>
+    <p style="margin:0 0 20px 0;color:#475569;font-size:14px">Run every platform operation from this page &mdash; no terminal required. All actions stream logs via WebSocket and are audit-logged automatically.</p>
+</div>
+
+<div class="grid-ops" id="opCardsGrid">
+    <div class="op-card">
+        <h3>📦 Database</h3>
+        <div class="op-desc">Initialize the database schema and seed default admin, hospitals, and demo data.</div>
+        <div class="op-form">
+            <div class="toggle-row"><input type="checkbox" id="seed_reset"><label for="seed_reset">Reset and recreate existing tables first</label></div>
+            <button class="btn-primary" onclick="adminOpSeedDb(this)">Seed / Reset Database</button>
+        </div>
+    </div>
+
+    <div class="op-card">
+        <h3>🗂️ Dataset Splitting</h3>
+        <div class="op-desc">Run split_data.py to distribute chest X-rays across hospital nodes with non-IID distribution.</div>
+        <div class="op-form">
+            <button class="btn-primary" onclick="adminOpSplitData(this)">Prepare &amp; Split Dataset</button>
+        </div>
+    </div>
+
+    <div class="op-card">
+        <h3>🧠 Init Global Model</h3>
+        <div class="op-desc">Create initial ChestCNN weight files (pure / quantized / DP variants) before first training run.</div>
+        <div class="op-form">
+            <button class="btn-primary" onclick="adminOpInitModel(this)">Initialize Global Model Checkpoints</button>
+        </div>
+    </div>
+
+    <div class="op-card">
+        <h3>⚡ Start FL Server</h3>
+        <div class="op-desc">Launch the Flower aggregation server. Clients can connect once the server is running.</div>
+        <div class="op-form">
+            <div class="row">
+                <div><label>Target Clients</label><input type="number" id="srv_target" value="3" min="1" max="50"></div>
+                <div><label>Min Clients</label><input type="number" id="srv_min" value="2" min="1" max="50"></div>
+            </div>
+            <div class="row">
+                <div><label>Rounds</label><input type="number" id="srv_rounds" value="20" min="1" max="500"></div>
+                <div><label>Server Addr</label><input type="text" id="srv_addr" value="localhost:8080"></div>
+            </div>
+            <div class="row">
+                <div class="toggle-row"><input type="checkbox" id="srv_q" checked><label for="srv_q">Quantization</label></div>
+                <div class="toggle-row"><input type="checkbox" id="srv_dp"><label for="srv_dp">DP Noise</label></div>
+                <div class="toggle-row"><input type="checkbox" id="srv_cpu"><label for="srv_cpu">Force CPU</label></div>
+            </div>
+            <button class="btn-primary" onclick="adminOpStartServer(this)">Start FL Server</button>
+            <button class="btn-danger" onclick="adminOpStopServer(this)">Stop All FL Servers</button>
+        </div>
+    </div>
+
+    <div class="op-card">
+        <h3>🔍 Global Evaluation</h3>
+        <div class="op-desc">Evaluate the latest global checkpoint on the test set; save plots + classification reports.</div>
+        <div class="op-form">
+            <button class="btn-primary" onclick="adminOpEvaluate(this)">Run Global Model Evaluation</button>
+        </div>
+    </div>
+
+    <div class="op-card">
+        <h3>📈 Generate Plots</h3>
+        <div class="op-desc">Render training curves, confusion matrices, ROC/PR curves from the latest metrics CSVs.</div>
+        <div class="op-form">
+            <button class="btn-primary" onclick="adminOpStartProcess(this,'graph')">Generate Plots (graph.py)</button>
+            <button class="btn-secondary" onclick="adminOpStartProcess(this,'comparison_graph')">Cross-Config Comparison Graphs</button>
+            <button class="btn-secondary" onclick="adminOpStartProcess(this,'comparison_table')">Local vs Federated Table</button>
+            <button class="btn-secondary" onclick="adminOpStartProcess(this,'evaluate_comparison')">Local vs Global Eval Compare</button>
+        </div>
+    </div>
+
+    <div class="op-card">
+        <h3>📤 Upload Files</h3>
+        <div class="op-desc">Upload datasets, checkpoints (.pth), or result CSVs into the admin upload workspace.</div>
+        <div class="op-form">
+            <input type="file" id="admin_upload_input" multiple>
+            <label>Optional subfolder</label><input type="text" id="admin_upload_subfolder" placeholder="e.g. custom_model_run01">
+            <button class="btn-primary" onclick="adminUploadSubmit(this)">Upload Selected Files</button>
+        </div>
+    </div>
+
+    <div class="op-card">
+        <h3>🧪 Experiments</h3>
+        <div class="op-desc">Jump to the Experiments panel for end-to-end ADSM experiment orchestration.</div>
+        <div class="op-form">
+            <a href="/admin/experiments" class="btn-primary" style="text-align:center;text-decoration:none;display:block">Open Experiments Panel</a>
+        </div>
+    </div>
+</div>
+
+<h3 class="section-title">🔄 Process Monitor &amp; Live Logs</h3>
+<div class="proc-detail-wrap">
+    <div class="process-list">
+        <div class="proc-row head">
+            <div>Process ID / Type</div>
+            <div>Hospital</div>
+            <div>Started</div>
+            <div>Status</div>
+            <div>Actions</div>
+        </div>
+        <div id="processListBody">
+            <div class="empty-state">No running or completed processes yet. Trigger an operation above.</div>
+        </div>
+    </div>
+    <div>
+        <div class="op-card" style="height:100%">
+            <h3 id="selectedProcTitle">📝 Selected Process Logs</h3>
+            <div class="op-desc" id="selectedProcDesc">Click any process row to view its live log stream here.</div>
+            <div class="log-panel" id="logPanel">
+                <div class="line" style="color:#64748b">[logs will appear here when a process is selected]</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-top:28px">⚙️ Quick Settings</h3>
+<div class="op-card" id="quickSettingsCard" style="max-width:780px">
+    <div class="op-form">
+        <div class="row">
+            <div class="toggle-row"><input type="checkbox" id="qs_q"><label for="qs_q">Use Quantization (USE_QUANTIZATION)</label></div>
+            <div class="toggle-row"><input type="checkbox" id="qs_dp"><label for="qs_dp">Enable DP (USE_DP)</label></div>
+            <div class="toggle-row"><input type="checkbox" id="qs_cpu"><label for="qs_cpu">Force CPU (FORCE_CPU)</label></div>
+        </div>
+        <div class="row">
+            <div><label>DP Epsilon</label><input type="number" step="0.1" id="qs_eps" value="1.0" min="0.01"></div>
+            <div><label>Default Rounds</label><input type="number" id="qs_rounds" value="20" min="1" max="500"></div>
+            <div><label>FL Server Address</label><input type="text" id="qs_addr" value="localhost:8080"></div>
+        </div>
+        <div class="row">
+            <div><label>Target Clients</label><input type="number" id="qs_tc" value="3" min="1" max="50"></div>
+            <div><label>Min Clients</label><input type="number" id="qs_mc" value="2" min="1" max="50"></div>
+            <div><label>Experiment Timeout (sec)</label><input type="number" id="qs_to" value="600" min="60" step="10"></div>
+        </div>
+        <div style="display:flex;gap:10px">
+            <button class="btn-primary" onclick="adminSaveQuickSettings(this)">Save Settings (apply to next subprocess)</button>
+            <button class="btn-secondary" onclick="adminResetQuickSettings(this)">Reset to defaults</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let adminWS = null;
+let selectedProcId = null;
+
+function connectAdminWS() {
+    const token = getCookieToken();
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${location.host}/ws/admin?token=${encodeURIComponent('Bearer ' + token)}`;
+    try {
+        adminWS = new WebSocket(url);
+        adminWS.onmessage = (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === 'process_log' || msg.type === 'process_status') {
+                if (msg.process_id === selectedProcId) appendLogLine(msg);
+                refreshProcessList();
+            }
+        };
+        adminWS.onopen = () => refreshProcessList();
+        adminWS.onclose = () => setTimeout(connectAdminWS, 3000);
+    } catch(e) { console.error(e); }
+}
+function getCookieToken() {
+    const c = document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('access_token='));
+    return c ? decodeURIComponent(c.split('=')[1]).replace('Bearer ','') : '';
+}
+function appendLogLine(msg) {
+    const panel = document.getElementById('logPanel');
+    const div = document.createElement('div');
+    div.className = 'line';
+    const ts = (msg.timestamp || '').substring(11,19);
+    const line = msg.line || msg.status || '';
+    div.textContent = `[${ts}] ${line}`;
+    panel.appendChild(div);
+    panel.scrollTop = panel.scrollHeight;
+    if (panel.childElementCount > 400) panel.removeChild(panel.firstChild);
+}
+function statusBadge(status) {
+    const map = {
+        running:['badge-running','Running'],starting:['badge-starting','Starting'],
+        completed:['badge-completed','Completed'],failed:['badge-failed','Failed'],
+        stopped:['badge-stopped','Stopped'],error:['badge-failed','Error']
+    };
+    const [cls,text] = map[status] || ['badge-starting', status || 'unknown'];
+    return `<span class="badge ${cls}">${text}</span>`;
+}
+async function refreshProcessList() {
+    try {
+        const data = await apiGet('/api/admin/processes');
+        const body = document.getElementById('processListBody');
+        const procs = (data.processes || []).slice().sort((a,b)=>new Date(b.started_at)-new Date(a.started_at));
+        if (!procs.length) {
+            body.innerHTML = '<div class="empty-state">No running or completed processes yet. Trigger an operation above.</div>';
+            return;
+        }
+        body.innerHTML = procs.map(p=>`
+            <div class="proc-row" style="cursor:pointer" onclick="selectProc('${p.process_id}')">
+                <div><div style="font-weight:600;color:#0f172a">${p.process_id}</div><div style="font-size:11px;color:#64748b">${p.process_type}</div></div>
+                <div>${p.hospital_code || '<span style="color:#94a3b8">—</span>'}</div>
+                <div style="font-size:12px;color:#64748b">${(p.started_at||'').substring(5,16)}</div>
+                <div>${statusBadge(p.status)}</div>
+                <div>
+                    ${(p.status==='running'||p.status==='starting') ? `<button class="btn-danger" onclick="event.stopPropagation();stopProc('${p.process_id}','admin')" style="padding:4px 10px;font-size:12px">Stop</button>` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+}
+async function selectProc(pid) {
+    selectedProcId = pid;
+    document.getElementById('selectedProcTitle').textContent = '📝 Logs for ' + pid;
+    document.getElementById('selectedProcDesc').textContent = 'Streaming via WebSocket…';
+    const panel = document.getElementById('logPanel');
+    panel.innerHTML = '';
+    try {
+        const d = await apiGet(`/api/admin/processes/${pid}?tail=300`);
+        (d.logs || []).forEach(line => {
+            const div = document.createElement('div');
+            div.className = 'line';
+            div.textContent = line;
+            panel.appendChild(div);
+        });
+        panel.scrollTop = panel.scrollHeight;
+        if (adminWS && adminWS.readyState === 1) {
+            adminWS.send(JSON.stringify({action:'subscribe_process', process_id: pid}));
+        }
+    } catch(e) { console.error(e); }
+}
+async function adminOpSeedDb(btn) {
+    const reset = document.getElementById('seed_reset').checked;
+    btn.disabled = true;
+    try {
+        const r = await apiPost('/api/admin/db/seed', {reset_first: reset});
+        showToast(r.message, r.success ? 'success' : 'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminOpSplitData(btn) {
+    btn.disabled = true;
+    try {
+        const r = await apiPost('/api/admin/data/prepare-split');
+        showToast(r.message, r.success ? 'success' : 'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminOpInitModel(btn) {
+    btn.disabled = true;
+    try {
+        const r = await apiPost('/api/admin/fl/init-model');
+        showToast(r.message, r.success ? 'success' : 'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminOpStartServer(btn) {
+    btn.disabled = true;
+    try {
+        const body = {
+            target_clients: parseInt(document.getElementById('srv_target').value),
+            min_clients: parseInt(document.getElementById('srv_min').value),
+            num_rounds: parseInt(document.getElementById('srv_rounds').value),
+            use_quantization: document.getElementById('srv_q').checked,
+            use_dp: document.getElementById('srv_dp').checked,
+            force_cpu: document.getElementById('srv_cpu').checked
+        };
+        const r = await apiPost('/api/admin/fl/start-round', body);
+        showToast(r.message, r.success ? 'success' : 'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminOpStopServer(btn) {
+    btn.disabled = true;
+    try {
+        const r = await apiPost('/api/admin/fl/stop-server');
+        showToast(r.message, r.success ? 'success' : 'info');
+        refreshProcessList();
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminOpEvaluate(btn) {
+    btn.disabled = true;
+    try {
+        const r = await apiPost('/api/admin/fl/evaluate');
+        showToast(r.message, r.success ? 'success' : 'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminOpStartProcess(btn, pt) {
+    btn.disabled = true;
+    try {
+        const r = await apiPost(`/api/admin/process-launch/${pt}`, {});
+        showToast(r.message, r.success ? 'success' : 'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminUploadSubmit(btn) {
+    const files = document.getElementById('admin_upload_input').files;
+    const sub = document.getElementById('admin_upload_subfolder').value || '';
+    if (!files || !files.length) { showToast('Select one or more files first','warning'); return; }
+    btn.disabled = true;
+    try {
+        const fd = new FormData();
+        for (const f of files) fd.append('files', f);
+        if (sub) fd.append('sub_folder', sub);
+        const token = getCookieToken();
+        const res = await fetch('/api/admin/uploads', {
+            method:'POST',
+            headers:{ 'Authorization': 'Bearer ' + token },
+            body: fd
+        });
+        const data = await res.json();
+        if (data.success) showToast(`Uploaded ${data.saved.length} file(s)`, 'success');
+        else showToast((data.errors||[])[0] || 'Upload failed','error');
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminSaveQuickSettings(btn) {
+    btn.disabled = true;
+    try {
+        const values = {
+            USE_QUANTIZATION: document.getElementById('qs_q').checked,
+            USE_DP: document.getElementById('qs_dp').checked,
+            DP_EPSILON: parseFloat(document.getElementById('qs_eps').value),
+            NUM_ROUNDS: parseInt(document.getElementById('qs_rounds').value),
+            FORCE_CPU: document.getElementById('qs_cpu').checked,
+            FL_SERVER_ADDRESS: document.getElementById('qs_addr').value,
+            TARGET_CLIENTS: parseInt(document.getElementById('qs_tc').value),
+            MIN_CLIENTS: parseInt(document.getElementById('qs_mc').value),
+            EXPERIMENT_TIMEOUT_SEC: parseInt(document.getElementById('qs_to').value)
+        };
+        const r = await apiPost('/api/admin/settings', {values});
+        showToast(r.message, r.success ? 'success':'error');
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function adminResetQuickSettings(btn) {
+    if (!confirm('Reset all runtime settings to defaults?')) return;
+    btn.disabled = true;
+    try {
+        const r = await apiPost('/api/admin/settings/reset');
+        showToast(r.message,'success');
+        loadQuickSettings();
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function loadQuickSettings() {
+    try {
+        const r = await apiGet('/api/admin/settings');
+        const s = r.settings || {};
+        const map = { q:'USE_QUANTIZATION', dp:'USE_DP', cpu:'FORCE_CPU', eps:'DP_EPSILON',
+                      rounds:'NUM_ROUNDS', addr:'FL_SERVER_ADDRESS', tc:'TARGET_CLIENTS', mc:'MIN_CLIENTS', to:'EXPERIMENT_TIMEOUT_SEC'};
+        for (const [id,k] of Object.entries(map)) {
+            const v = s[k] ? s[k].value : undefined;
+            if (v === undefined) continue;
+            const el = document.getElementById('qs_'+id);
+            if (!el) continue;
+            if (el.type === 'checkbox') el.checked = !!v;
+            else el.value = v;
+        }
+    } catch(e) {}
+}
+connectAdminWS();
+loadQuickSettings();
+setInterval(refreshProcessList, 5000);
+</script>
+{% endblock %}

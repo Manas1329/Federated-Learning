@@ -27,6 +27,13 @@ from sklearn.metrics import (
 
 from sklearn.preprocessing import label_binarize
 
+from pathlib import Path
+import sys
+# Ensure 'src' package is importable regardless of where the script is run from
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from paths import resolve_data_path, MODELS_DIR, PLOTS_DIR, REPORTS_DIR
+
 from model import ChestCNN
 from utils import load_hospital_data
 
@@ -55,42 +62,12 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(
-        os.path.abspath(__file__)
-    )
-)
+MODEL_PATH = MODELS_DIR / f"global_model_{SUFFIX}.pth"
 
-MODEL_PATH = os.path.join(
-    os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(__file__)
-        )
-    ),
-    "models",
-    f"global_model_{SUFFIX}.pth"
-)
+OUTPUT_DIR = PLOTS_DIR / SUFFIX
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-OUTPUT_DIR = os.path.join(
-    BASE_DIR,
-    "dashboard",
-    "plots",
-    SUFFIX
-)
-
-REPORTS_DIR = os.path.join(
-    BASE_DIR,
-    "dashboard",
-    "classification_reports"
-)
-os.makedirs(REPORTS_DIR, exist_ok=True)
-
-REPORT_PATH = os.path.join(
-    REPORTS_DIR,
-    f"classification_report_{SUFFIX}.md"
-)
-
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+REPORT_PATH = REPORTS_DIR / f"classification_report_{SUFFIX}.md"
 
 # -------------------------------
 # Load Model
@@ -113,15 +90,9 @@ print("Global model loaded successfully.")
 # Load Test Data
 # -------------------------------
 
-# DATA_PATH = os.path.join(
-#     os.path.dirname(BASE_DIR),
-#     "data",
-#     "hospital_A"
-# )
-DATA_PATH = os.path.join(
-    BASE_DIR,
-    "data",
-    "hospital_A"
+DATA_PATH = resolve_data_path(
+    os.environ.get("DATA_PATH"),
+    os.environ.get("CLIENT_NAME")
 )
 _, testloader = load_hospital_data(DATA_PATH)
 
