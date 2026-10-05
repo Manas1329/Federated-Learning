@@ -379,5 +379,69 @@ class TestDropoutEngine(unittest.TestCase):
             server._log_global_model(5, "A", 1, 0, 10.0)
             self.assertTrue(os.path.exists(os.path.join(temp_dir, "all_global_models_registry.csv")))
 
+    @patch('time.perf_counter')
+    def test_28_starvation_protection_triggers(self, mock_time):
+        """Test 2: Repeated slow client eventually triggers starvation protection."""
+        self.engine.record_success("C", 80.0)
+        self.engine._get_profile("C").consecutive_excluded_rounds = 2
+        
+        mock_time.return_value = 0.0
+        self.engine.start_round(2, ["C", "A", "B"])
+        self.engine.record_success("A", 10.0)
+        self.engine.record_success("B", 10.0)
+        
+        mock_time.return_value = 40.0
+        decisions = self.engine.evaluate_missing_clients()
+        decC = decisions["C"]
+        
+        self.assertTrue(decC.should_wait)
+        self.assertEqual(decC.reason, "STARVATION_PROTECTION")
+        self.assertEqual(decC.state, ClientState.STRAGGLER.value)
+
+    def test_29_successful_inclusion_resets_starvation(self):
+        """Test 3: Successful inclusion resets consecutive exclusion count."""
+        self.engine._get_profile("C").consecutive_excluded_rounds = 2
+        self.engine.start_round(2, ["C"])
+        self.engine.record_success("C", 20.0)
+        
+        self.assertEqual(self.engine._get_profile("C").consecutive_excluded_rounds, 0)
+
+    def test_30_independent_exclusion_histories(self):
+        """Test 5: Different clients maintain independent exclusion histories."""
+        self.engine.start_round(1, ["A", "B"])
+        self.engine.record_straggler_drop("A")
+        self.engine.start_round(2, ["A", "B"])
+        self.engine.record_straggler_drop("A")
+        self.engine.record_success("B", 20.0)
+        
+        self.assertEqual(self.engine._get_profile("A").consecutive_excluded_rounds, 2)
+        self.assertEqual(self.engine._get_profile("B").consecutive_excluded_rounds, 0)
+
+    def test_31_failures_do_not_increment_exclusion(self):
+        """Test 6: Failures/disconnections do not incorrectly increment adaptive exclusion count."""
+        self.engine.record_network_failure("A")
+        self.engine.record_failure("A")
+        self.assertEqual(self.engine._get_profile("A").consecutive_excluded_rounds, 0)
+
+    @patch.dict('os.environ', {}, clear=True)
+    def test_32_compact_logging_default(self):
+        """Test 7: Compact logging is the default."""
+        from federated_healthcare.src.dropout_engine import logger, configure_logger
+        import logging
+        configure_logger()
+        self.assertEqual(logger.level, logging.INFO)
+
+    @patch.dict('os.environ', {"VERBOSE_LOGGING": "1"})
+    def test_33_verbose_logging_enabled(self):
+        """Test 8: VERBOSE_LOGGING=1 enables detailed logging."""
+        from federated_healthcare.src.dropout_engine import logger, configure_logger
+        import logging
+        configure_logger()
+        self.assertEqual(logger.level, logging.DEBUG)
+        
+        # Reset module state
+        with patch.dict('os.environ', {"VERBOSE_LOGGING": "0"}):
+            configure_logger()
+
 if __name__ == '__main__':
     unittest.main()

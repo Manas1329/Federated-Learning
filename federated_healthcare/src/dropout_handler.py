@@ -124,6 +124,7 @@ class AdaptiveServer(Server):
 
         results: List[Tuple[ClientProxy, FitRes]] = []
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]] = []
+        timed_out_clients: List[str] = []
         
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
         try:
@@ -188,9 +189,20 @@ class AdaptiveServer(Server):
                             
                     except Exception as ex:
                         is_network_failure = False
-                        if isinstance(ex, grpc.RpcError):
-                            # True gRPC error can be mapped to connection lost
-                            if ex.code() in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.CANCELLED):
+                        if isinstance(ex, grpc.RpcError) and hasattr(ex, 'code'):
+                            code = ex.code()
+                            if code == grpc.StatusCode.DEADLINE_EXCEEDED:
+                                timed_out_clients.append(cid)
+                                VERBOSE_LOGGING = os.environ.get("VERBOSE_LOGGING", "0") == "1"
+                                if VERBOSE_LOGGING:
+                                    print(f"gRPC Deadline Exceeded for {cid}: {ex}")
+                                else:
+                                    print(f"[Flower] R{server_round} | {cid} | ROUND_TIMEOUT | train_time>{timeout}s")
+                                self.engine.record_straggler_drop(cid, reason="FLOWER_ROUND_TIMEOUT")
+                                failures.append(Exception("FLOWER_ROUND_TIMEOUT"))
+                                self._record_participation(cid, success=False)
+                                continue
+                            elif code in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.CANCELLED):
                                 is_network_failure = True
                         
                         if is_network_failure:
@@ -248,15 +260,22 @@ class AdaptiveServer(Server):
                                 self._record_participation(str(client_proxy.cid), success=False)
                         
                 if future_to_client and timeout and self.engine.get_elapsed_time() >= timeout:
-                        print(f"\n[AdaptiveServer] Hard round timeout ({timeout}s) expired! Canceling remaining.")
+                        VERBOSE_LOGGING = os.environ.get("VERBOSE_LOGGING", "0") == "1"
+                        if VERBOSE_LOGGING:
+                            print(f"\n[AdaptiveServer] Hard round timeout ({timeout}s) expired! Canceling remaining.")
                         break
 
             for future in list(future_to_client.keys()):
                 client_proxy, ins = future_to_client.pop(future)
                 future.cancel()
-                self.engine.record_straggler_drop(str(client_proxy.cid))
-                failures.append(Exception("Round ended or timed out"))
-                self._record_participation(str(client_proxy.cid), success=False)
+                cid = str(client_proxy.cid)
+                timed_out_clients.append(cid)
+                VERBOSE_LOGGING = os.environ.get("VERBOSE_LOGGING", "0") == "1"
+                if not VERBOSE_LOGGING:
+                    print(f"[Flower] R{server_round} | {cid} | ROUND_TIMEOUT | train_time>{timeout}s")
+                self.engine.record_straggler_drop(cid, reason="FLOWER_ROUND_TIMEOUT")
+                failures.append(Exception("FLOWER_ROUND_TIMEOUT"))
+                self._record_participation(cid, success=False)
         
         finally:
             # shutdown without waiting so stragglers don't block the server round
@@ -264,15 +283,34 @@ class AdaptiveServer(Server):
 
         self.engine.finalize_round()
 
-        print(f"\n[AdaptiveServer] Round {server_round} collection finished.")
-        print(f"[AdaptiveServer] Collected {len(results)} successful clients.")
-        print(f"[AdaptiveServer] {len(failures)} clients failed or dropped out.")
+        VERBOSE_LOGGING = os.environ.get("VERBOSE_LOGGING", "0") == "1"
+        timeout_occurred = len(timed_out_clients) > 0
+        
+        if timeout_occurred and not VERBOSE_LOGGING:
+            print(f"[Flower] R{server_round} | ROUND_TIMEOUT | timeout={timeout}s | completed={len(results)}/{total_selected} | timed_out={len(timed_out_clients)}")
+
+        if VERBOSE_LOGGING:
+            print(f"\n[AdaptiveServer] Round {server_round} collection finished.")
+            print(f"[AdaptiveServer] Collected {len(results)} successful clients.")
+            print(f"[AdaptiveServer] {len(failures)} clients failed or dropped out.")
+        else:
+            if not timeout_occurred:
+                print(f"[Server] R{server_round} | selected={total_selected} | completed={len(results)} | dropped={len(failures)} | quorum={self.min_clients} | aggregate={len(results) if len(results) >= self.min_clients else 0}")
 
         # Minimum Client Check
-        if len(results) < self.min_clients:
-            print(f"[AdaptiveServer] ERROR: Minimum clients ({self.min_clients}) not reached. Only {len(results)} succeeded.")
-            print("[AdaptiveServer] Aborting aggregation for this round.")
-            return None # Round failed
+        quorum_satisfied = len(results) >= self.min_clients
+        
+        if timeout_occurred and not VERBOSE_LOGGING:
+            if quorum_satisfied:
+                print(f"[Server] R{server_round} | timeout handled | quorum={self.min_clients} | aggregate={len(results)} | continue")
+            else:
+                print(f"[Server] R{server_round} | timeout handled | quorum={self.min_clients} | aggregate=0 | round_aborted")
+
+        if not quorum_satisfied:
+            if VERBOSE_LOGGING:
+                print(f"[AdaptiveServer] ERROR: Minimum clients ({self.min_clients}) not reached. Only {len(results)} succeeded.")
+                print("[AdaptiveServer] Aborting aggregation for this round.")
+            return None # Round failed cleanly
 
         # 3. Aggregate results
         aggregated_result = self.strategy.aggregate_fit(

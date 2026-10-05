@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python environments
+venv/
+env/
+.env
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project-specific local outputs (prevents baking large local results into the image)
+federated_healthcare/dashboard/results/
+federated_healthcare/models/*.pth
+
+# If you prefer to mount your dataset dynamically and NOT bake it into the image, 
+# uncomment the line below. (Note: Your current Dockerfile expects the data folder to be copied)
+data/

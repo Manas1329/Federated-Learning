@@ -4,13 +4,21 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Dict, List, Set, Optional
 
+import os
+
 logger = logging.getLogger("DropoutEngine")
-if not logger.handlers:
-    ch = logging.StreamHandler()
-    formatter = logging.Formatter('%(message)s')
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-    logger.setLevel(logging.INFO)
+def configure_logger():
+    if not logger.handlers:
+        ch = logging.StreamHandler()
+        formatter = logging.Formatter('%(message)s')
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+    if os.environ.get("VERBOSE_LOGGING", "0") == "1":
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
+configure_logger()
 
 class ClientState(Enum):
     SELECTED = "SELECTED"
@@ -36,6 +44,9 @@ class ClientProfile:
     has_history: bool = False
     last_completion_time: float = 0.0
     last_state: str = ""
+    consecutive_excluded_rounds: int = 0
+    total_exclusions: int = 0
+    last_included_round: int = -1
 
     @property
     def reliability(self) -> float:
@@ -69,13 +80,15 @@ class AdaptiveDropoutDecisionEngine:
         alpha: float = 0.30,
         beta: float = 0.30,
         k: float = 1.0,
-        minimum_quorum: int = 2
+        minimum_quorum: int = 2,
+        max_consecutive_exclusions: int = 2
     ):
         self.hard_deadline = hard_deadline
         self.alpha = alpha
         self.beta = beta
         self.k = k
         self.minimum_quorum = minimum_quorum
+        self.max_consecutive_exclusions = max_consecutive_exclusions
         
         self.profiles: Dict[str, ClientProfile] = {}
         
@@ -102,8 +115,8 @@ class AdaptiveDropoutDecisionEngine:
             profile.total_rounds += 1
             profile.last_state = ClientState.SELECTED.value
             
-        logger.info(f"=== ROUND {round_id} ENGINE START ===")
-        logger.info(f"Selected clients: {selected_clients}")
+        logger.debug(f"=== ROUND {round_id} ENGINE START ===")
+        logger.debug(f"Selected clients: {selected_clients}")
 
     def _mark_finalized(self, client_id: str, state: ClientState):
         """Marks a client as finalized for the current round, preventing double-counting."""
@@ -136,8 +149,10 @@ class AdaptiveDropoutDecisionEngine:
             
         profile.successful_participations += 1
         profile.last_completion_time = a_it
+        profile.consecutive_excluded_rounds = 0
+        profile.last_included_round = self.current_round
         
-        logger.info(f"ROUND {self.current_round} | CLIENT {client_id} | STATE COMPLETED | OBSERVED_COMPLETION {a_it:.1f}s | EMA {profile.mu:.1f}s | DEVIATION {profile.d:.1f}s")
+        logger.debug(f"ROUND {self.current_round} | CLIENT {client_id} | STATE COMPLETED | OBSERVED_COMPLETION {a_it:.1f}s | EMA {profile.mu:.1f}s | DEVIATION {profile.d:.1f}s")
 
     def record_network_failure(self, client_id: str, reason: str = "network disconnect"):
         """Records a confirmed connection drop."""
@@ -147,7 +162,7 @@ class AdaptiveDropoutDecisionEngine:
         profile = self._get_profile(client_id)
         profile.network_failures += 1
         
-        logger.info(f"ROUND {self.current_round} | CLIENT {client_id} | STATE DISCONNECTED | REASON {reason} | DECISION DROP")
+        logger.debug(f"ROUND {self.current_round} | CLIENT {client_id} | STATE DISCONNECTED | REASON {reason} | DECISION DROP")
 
     def record_straggler_drop(self, client_id: str, reason: str = "deadline violation"):
         """Records a straggler drop."""
@@ -156,8 +171,10 @@ class AdaptiveDropoutDecisionEngine:
             
         profile = self._get_profile(client_id)
         profile.straggler_drops += 1
+        profile.consecutive_excluded_rounds += 1
+        profile.total_exclusions += 1
         
-        logger.info(f"ROUND {self.current_round} | CLIENT {client_id} | STATE DROPPED | REASON {reason}")
+        logger.debug(f"ROUND {self.current_round} | CLIENT {client_id} | STATE DROPPED | REASON {reason}")
 
     def record_failure(self, client_id: str, reason: str = "generic failure"):
         """Records a generic failure."""
@@ -167,7 +184,7 @@ class AdaptiveDropoutDecisionEngine:
         profile = self._get_profile(client_id)
         profile.other_failures += 1
         
-        logger.info(f"ROUND {self.current_round} | CLIENT {client_id} | STATE FAILED | REASON {reason}")
+        logger.debug(f"ROUND {self.current_round} | CLIENT {client_id} | STATE FAILED | REASON {reason}")
         
     def record_not_required(self, client_id: str):
         """Records a client that was no longer required due to quorum being met."""
@@ -177,7 +194,7 @@ class AdaptiveDropoutDecisionEngine:
         profile = self._get_profile(client_id)
         profile.not_required_after_quorum += 1
         
-        logger.info(f"ROUND {self.current_round} | CLIENT {client_id} | STATE NOT_REQUIRED_AFTER_QUORUM | DECISION STOP_WAITING")
+        logger.debug(f"ROUND {self.current_round} | CLIENT {client_id} | STATE NOT_REQUIRED_AFTER_QUORUM | DECISION STOP_WAITING")
 
     def get_elapsed_time(self) -> float:
         return time.perf_counter() - self.round_start_time
@@ -229,12 +246,17 @@ class AdaptiveDropoutDecisionEngine:
         
         for cid in pending_clients:
             decision = self.predict_completion(cid, current_elapsed)
+            profile = self._get_profile(cid)
             
             # Quorum protection: If dropping this client means we can't reach quorum, we must wait.
             if not decision.should_wait:
                 if definitively_completed + len(pending_clients) <= self.minimum_quorum:
                     decision.should_wait = True
                     decision.reason = "quorum protection (waiting despite missing deadline)"
+                    decision.state = ClientState.STRAGGLER.value
+                elif profile.consecutive_excluded_rounds >= self.max_consecutive_exclusions:
+                    decision.should_wait = True
+                    decision.reason = "STARVATION_PROTECTION"
                     decision.state = ClientState.STRAGGLER.value
             
             # If still not waiting, mark state as DROPPED in decision (but don't finalize here yet, let server do it)
@@ -245,16 +267,22 @@ class AdaptiveDropoutDecisionEngine:
             
             if decision.state == ClientState.STRAGGLER.value or decision.state == ClientState.DROPPED.value:
                 log_reason = decision.reason
-                logger.info(
-                    f"ROUND {self.current_round} | CLIENT {cid} | STATE {decision.state} | "
-                    f"ELAPSED {decision.elapsed_time:.1f}s | EXPECTED {decision.expected_completion:.1f}s | "
-                    f"DEVIATION {decision.variability:.1f}s | PREDICTED_FINISH {decision.predicted_finish_time:.1f}s | "
-                    f"DEADLINE {self.hard_deadline:.1f}s | DECISION {'WAIT' if decision.should_wait else 'DROP'} "
-                    f"| REASON {log_reason}"
-                )
+                if logger.level == logging.DEBUG:
+                    logger.debug(
+                        f"ROUND {self.current_round} | CLIENT {cid} | STATE {decision.state} | "
+                        f"ELAPSED {decision.elapsed_time:.1f}s | EXPECTED {decision.expected_completion:.1f}s | "
+                        f"DEVIATION {decision.variability:.1f}s | PREDICTED_FINISH {decision.predicted_finish_time:.1f}s | "
+                        f"DEADLINE {self.hard_deadline:.1f}s | DECISION {'WAIT' if decision.should_wait else 'DROP'} "
+                        f"| REASON {log_reason}"
+                    )
+                else:
+                    if not decision.should_wait:
+                        logger.info(f"[Adaptive] R{self.current_round} | {cid} | pred={decision.predicted_finish_time:.1f}s | deadline={self.hard_deadline}s | DROP | excluded={profile.consecutive_excluded_rounds}")
+                    elif decision.reason == "STARVATION_PROTECTION":
+                        logger.info(f"[Adaptive] R{self.current_round} | {cid} | pred={decision.predicted_finish_time:.1f}s | STARVATION_PROTECTION | WAIT")
             
         return decisions
 
     def finalize_round(self):
         """Cleans up and finalizes the round."""
-        logger.info(f"=== ROUND {self.current_round} ENGINE FINALIZE ===")
+        logger.debug(f"=== ROUND {self.current_round} ENGINE FINALIZE ===")
