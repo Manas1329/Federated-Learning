@@ -123,19 +123,19 @@ Open 4 separate terminal windows:
 * **Terminal 2: Client A**
   ```bash
   venv\Scripts\Activate.bat
-  set DATA_PATH=.\data\hospital_A&& set CLIENT_NAME=Hospital_A&& python federated_healthcare\src\client.py
+  set DATA_PATH=.\federated_healthcare\data\hospital_A&& set CLIENT_NAME=Hospital_A&& python federated_healthcare\src\client.py
 
   ```
 * **Terminal 3: Client B**
   ```bash
   venv\Scripts\Activate.bat
-  set DATA_PATH=.\data\hospital_B&& set CLIENT_NAME=Hospital_B&& python federated_healthcare\src\client.py
+  set DATA_PATH=.\federated_healthcare\data\hospital_B&& set CLIENT_NAME=Hospital_B&& python federated_healthcare\src\client.py
 
   ```
 * **Terminal 4: Client C**
   ```bash
   venv\Scripts\Activate.bat
-  set DATA_PATH=.\data\hospital_C&& set CLIENT_NAME=Hospital_C&& python federated_healthcare\src\client.py
+  set DATA_PATH=.\federated_healthcare\data\hospital_c&& set CLIENT_NAME=Hospital_C&& python federated_healthcare\src\client.py
 
   ```
 

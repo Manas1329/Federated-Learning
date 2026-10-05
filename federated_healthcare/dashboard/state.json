@@ -37,14 +37,14 @@
   },
   "server_pid": null,
   "trust_data": {
-    "Hospital_A": {
-      "client_id": "Hospital_A",
-      "round": 4,
-      "update_score": 75.0,
-      "training_score": 95.0,
-      "historical_score": 78.2,
+    "Hospital_B": {
+      "client_id": "Hospital_B",
+      "round": 10,
+      "update_score": 90.0,
+      "training_score": 90.0,
+      "historical_score": 87.5,
       "reliability_score": 100.0,
-      "trust_score": 84.1,
+      "trust_score": 90.5,
       "tag": "TRUSTED",
       "history": [
         [
@@ -54,24 +54,54 @@
         ],
         [
           3,
-          83.7,
+          80.7,
           "TRUSTED"
         ],
         [
           4,
-          84.1,
+          82.5,
+          "TRUSTED"
+        ],
+        [
+          5,
+          88.8,
+          "TRUSTED"
+        ],
+        [
+          6,
+          87.9,
+          "TRUSTED"
+        ],
+        [
+          7,
+          89.7,
+          "TRUSTED"
+        ],
+        [
+          8,
+          90.1,
+          "TRUSTED"
+        ],
+        [
+          9,
+          88.9,
+          "TRUSTED"
+        ],
+        [
+          10,
+          90.5,
           "TRUSTED"
         ]
       ]
     },
     "Hospital_C": {
       "client_id": "Hospital_C",
-      "round": 4,
-      "update_score": 75.0,
-      "training_score": 85.0,
-      "historical_score": 78.2,
+      "round": 10,
+      "update_score": 90.0,
+      "training_score": 90.0,
+      "historical_score": 87.2,
       "reliability_score": 100.0,
-      "trust_score": 81.1,
+      "trust_score": 90.4,
       "tag": "TRUSTED",
       "history": [
         [
@@ -81,17 +111,69 @@
         ],
         [
           3,
-          83.7,
+          80.7,
           "TRUSTED"
         ],
         [
           4,
-          81.1,
+          82.5,
+          "TRUSTED"
+        ],
+        [
+          5,
+          87.3,
+          "TRUSTED"
+        ],
+        [
+          6,
+          87.8,
+          "TRUSTED"
+        ],
+        [
+          7,
+          88.2,
+          "TRUSTED"
+        ],
+        [
+          8,
+          88.5,
+          "TRUSTED"
+        ],
+        [
+          9,
+          90.2,
+          "TRUSTED"
+        ],
+        [
+          10,
+          90.4,
+          "TRUSTED"
+        ]
+      ]
+    },
+    "Hospital_A": {
+      "client_id": "Hospital_A",
+      "round": 9,
+      "update_score": 75.0,
+      "training_score": 90.0,
+      "historical_score": 75.9,
+      "reliability_score": 100.0,
+      "trust_score": 82.2,
+      "tag": "TRUSTED",
+      "history": [
+        [
+          4,
+          78.0,
+          "SUSPICIOUS"
+        ],
+        [
+          9,
+          82.2,
           "TRUSTED"
         ]
       ]
     }
   },
-  "version": 3,
-  "last_updated": "03:38:59 PM"
+  "version": 9,
+  "last_updated": "02:06:28 PM"
 }
