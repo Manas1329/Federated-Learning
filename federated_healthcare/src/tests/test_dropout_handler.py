@@ -261,3 +261,108 @@ def test_quorum_protection_two_completed():
     # max_drops = max(0, 2 + 1 - 2) = 1
     # It can be safely dropped
     assert len(retained_drops) == 1
+
+import grpc
+
+class FakeRpcError(grpc.RpcError):
+    def __init__(self, code):
+        self._code = code
+    def code(self):
+        return self._code
+    def __str__(self):
+        return f"FakeRpcError: {self._code}"
+
+def test_timeout_with_quorum_handled_gracefully():
+    """Test 1: timeout with quorum"""
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    # 2 completed, 1 timeout
+    cC.fit_should_block = False
+    cC.fit_exception = FakeRpcError(grpc.StatusCode.DEADLINE_EXCEEDED)
+    
+    strategy.configure_fit.return_value = [(cA, None), (cB, None), (cC, None)]
+    
+    res = server.fit_round(1, timeout=1.0)
+    
+    # Aggregation should succeed since 2 >= quorum(2)
+    assert res is not None
+    parameters_aggregated, metrics_aggregated, (results, failures) = res
+    assert len(results) == 2
+    assert len(failures) == 1
+    assert str(failures[0]) == "FLOWER_ROUND_TIMEOUT"
+
+def test_timeout_without_quorum_aborts_cleanly():
+    """Test 2: timeout without quorum"""
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    # 1 completed, 2 timeout
+    cB.fit_should_block = False
+    cB.fit_exception = FakeRpcError(grpc.StatusCode.DEADLINE_EXCEEDED)
+    cC.fit_should_block = False
+    cC.fit_exception = FakeRpcError(grpc.StatusCode.DEADLINE_EXCEEDED)
+    
+    strategy.configure_fit.return_value = [(cA, None), (cB, None), (cC, None)]
+    
+    res = server.fit_round(1, timeout=1.0)
+    
+    # Aggregation should skip since 1 < quorum(2)
+    assert res is None
+
+def test_timeout_classification():
+    """Test 3: timeout classification"""
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    cA.fit_exception = FakeRpcError(grpc.StatusCode.DEADLINE_EXCEEDED)
+    
+    strategy.configure_fit.return_value = [(cA, None)]
+    
+    server.fit_round(1, timeout=1.0)
+    profile = server.engine._get_profile("A")
+    assert profile.straggler_drops == 1 # recorded as straggler drop due to timeout
+    assert profile.network_failures == 0
+
+def test_unexpected_grpc_error_not_treated_as_timeout():
+    """Test 4: unexpected grpc error"""
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    cA.fit_exception = FakeRpcError(grpc.StatusCode.UNAVAILABLE)
+    cB.fit_exception = FakeRpcError(grpc.StatusCode.INTERNAL)
+    
+    strategy.configure_fit.return_value = [(cA, None), (cB, None)]
+    
+    server.fit_round(1, timeout=1.0)
+    profile_a = server.engine._get_profile("A")
+    profile_b = server.engine._get_profile("B")
+    
+    assert profile_a.straggler_drops == 0
+    assert profile_a.network_failures == 1 # UNAVAILABLE maps to network failure
+    
+    assert profile_b.straggler_drops == 0
+    assert profile_b.other_failures == 1 # INTERNAL maps to other failure
+
+def test_multiple_rounds():
+    """Test 5: multiple rounds with mixed results"""
+    server, strategy, cA, cB, cC = get_server_and_mocks()
+    
+    # R1: timeout but quorum succeeds (A,B OK; C timeout)
+    cC.fit_exception = FakeRpcError(grpc.StatusCode.DEADLINE_EXCEEDED)
+    strategy.configure_fit.return_value = [(cA, None), (cB, None), (cC, None)]
+    res1 = server.fit_round(1, timeout=1.0)
+    assert res1 is not None
+    
+    # R2: normal (A,B,C OK)
+    cC.fit_exception = None
+    res2 = server.fit_round(2, timeout=1.0)
+    assert res2 is not None
+    
+    # R3: timeout without quorum (A OK; B,C timeout)
+    cB.fit_exception = FakeRpcError(grpc.StatusCode.DEADLINE_EXCEEDED)
+    cC.fit_exception = FakeRpcError(grpc.StatusCode.DEADLINE_EXCEEDED)
+    res3 = server.fit_round(3, timeout=1.0)
+    assert res3 is None
+    
+    # R4: normal (A,B,C OK)
+    cB.fit_exception = None
+    cC.fit_exception = None
+    res4 = server.fit_round(4, timeout=1.0)
+    assert res4 is not None
