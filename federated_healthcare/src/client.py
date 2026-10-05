@@ -8,11 +8,6 @@ from collections import OrderedDict
 from model import ChestCNN, train, train_dp, test
 from utils import load_hospital_data, load_partitions
 
-VERBOSE_LOGGING = os.environ.get("VERBOSE_LOGGING", "0") == "1"
-if not VERBOSE_LOGGING:
-    import logging
-    logging.getLogger("flwr").setLevel(logging.WARNING)
-
 from quantization import (
     quantize_parameters,
 )
@@ -43,22 +38,12 @@ from paths import resolve_data_path, RESULTS_DIR
 # Get hospital/client name from environment
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Hospital_A")
 
-RUN_MODE = os.environ.get("RUN_MODE", "normal").lower()
-
-def _is_experiment_enabled(var_name):
-    if var_name in os.environ:
-        if RUN_MODE != "experiment":
-            print(f"[{CLIENT_NAME}] [Config] RUN_MODE=normal; experiment-only setting {var_name} ignored.")
-            return False
-        return True
-    return False
-
 DATA_PATH = resolve_data_path(
     os.environ.get("DATA_PATH"),
     CLIENT_NAME
 )
 
-SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "[10.10.27.0:8080]")
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 
@@ -259,41 +244,40 @@ class HospitalClient(fl.client.NumPyClient):
         round_number = config.get("server_round", 0)
 
         # [EXPERIMENT-ONLY] Simulate exact network dropout at specific round
-        if _is_experiment_enabled("NETWORK_DROPOUT_ROUND"):
+        if "NETWORK_DROPOUT_ROUND" in os.environ:
             dropout_round = int(os.environ["NETWORK_DROPOUT_ROUND"])
             if round_number == dropout_round:
                 print(f"[{CLIENT_NAME}] [EXPERIMENT] Simulating network dropout at round {round_number}. Exiting immediately.")
                 import sys
-                sys.exit(1)
+                sy****it(1)
 
-        if VERBOSE_LOGGING:
-            print("\n" + "=" * 60)
-            print(f"[{CLIENT_NAME}] Federated Round {round_number}")
-            print("=" * 60)
+        print("\n" + "=" * 60)
+        print(f"[{CLIENT_NAME}] Federated Round {round_number}")
+        print("=" * 60)
 
         # ----------------------------------------------------------
         # Display own trust status from previous round (server-injected)
         # Each client sees ONLY its own status, not other hospitals'
         # ----------------------------------------------------------
+        _trust_score = config.get("trust_score")
         if _trust_score is not None:
             _TAG_EMOJI = {"TRUSTED": "🟢", "SUSPICIOUS": "🟡", "UNTRUSTED": "🔴"}
             _tag       = config.get("trust_tag", "TRUSTED")
             _emoji     = _TAG_EMOJI.get(_tag, "")
-            if VERBOSE_LOGGING:
-                print()
-                print("=" * 52)
-                _header = f"{CLIENT_NAME} - CLIENT TRUST STATUS (Round {round_number})"
-                print(f"  {_header}")
-                print("=" * 52)
-                print(f"  {'Update Behaviour':<22}: {config.get('trust_update',      0.0):.1f} / 100")
-                print(f"  {'Training Behaviour':<22}: {config.get('trust_training',  0.0):.1f} / 100")
-                print(f"  {'Historical Trust':<22}: {config.get('trust_history',     0.0):.1f} / 100")
-                print(f"  {'Participation':<22}: {config.get('trust_reliability', 0.0):.1f} / 100")
-                print(f"  {'-' * 38}")
-                print(f"  {'Final Trust Score':<22}: {_trust_score:.1f} / 100")
-                print(f"  {'Client Tag':<22}: {_emoji} {_tag}")
-                print("=" * 52)
-                print()
+            print()
+            print("=" * 52)
+            _header = f"{CLIENT_NAME} - CLIENT TRUST STATUS (Round {round_number})"
+            print(f"  {_header}")
+            print("=" * 52)
+            print(f"  {'Update Behaviour':<22}: {config.get('trust_update',      0.0):.1f} / 100")
+            print(f"  {'Training Behaviour':<22}: {config.get('trust_training',  0.0):.1f} / 100")
+            print(f"  {'Historical Trust':<22}: {config.get('trust_history',     0.0):.1f} / 100")
+            print(f"  {'Participation':<22}: {config.get('trust_reliability', 0.0):.1f} / 100")
+            print(f"  {'-' * 38}")
+            print(f"  {'Final Trust Score':<22}: {_trust_score:.1f} / 100")
+            print(f"  {'Client Tag':<22}: {_emoji} {_tag}")
+            print("=" * 52)
+            print()
 
         # ============================================================
         # TOTAL TRAINING TIMER
@@ -319,11 +303,10 @@ class HospitalClient(fl.client.NumPyClient):
         # DIFFERENTIAL PRIVACY TRAINING
         # ============================================================
         if USE_DP:
-            if VERBOSE_LOGGING:
-                print(f"[{CLIENT_NAME}] DP-SGD enabled")
-                print(f"[{CLIENT_NAME}] Noise Multiplier: {DP_NOISE_MULTIPLIER}")
-                print(f"[{CLIENT_NAME}] Max Gradient Norm: {DP_MAX_GRAD_NORM}")
-                print(f"[{CLIENT_NAME}] Delta: {DP_DELTA}")
+            print(f"[{CLIENT_NAME}] DP-SGD enabled")
+            print(f"[{CLIENT_NAME}] Noise Multiplier: {DP_NOISE_MULTIPLIER}")
+            print(f"[{CLIENT_NAME}] Max Gradient Norm: {DP_MAX_GRAD_NORM}")
+            print(f"[{CLIENT_NAME}] Delta: {DP_DELTA}")
 
             epoch_start = time.perf_counter()
 
@@ -341,9 +324,8 @@ class HospitalClient(fl.client.NumPyClient):
             epoch_time = (epoch_end - epoch_start)
             epoch_times.append(epoch_time)
 
-            if VERBOSE_LOGGING:
-                print(f"[{CLIENT_NAME}] DP Training: {NUM_EPOCHS} epochs | {epoch_time:.2f} sec")
-                print(f"[{CLIENT_NAME}] Privacy Budget: epsilon={epsilon:.4f}, delta={DP_DELTA}")
+            print(f"[{CLIENT_NAME}] DP Training: {NUM_EPOCHS} epochs | {epoch_time:.2f} sec")
+            print(f"[{CLIENT_NAME}] Privacy Budget: epsilon={epsilon:.4f}, delta={DP_DELTA}")
 
         # ============================================================
         # NORMAL TRAINING
@@ -363,15 +345,14 @@ class HospitalClient(fl.client.NumPyClient):
                 epoch_time = (epoch_end - epoch_start)
                 epoch_times.append(epoch_time)
 
-                if VERBOSE_LOGGING:
-                    print(f"[{CLIENT_NAME}] Epoch {epoch + 1}/{NUM_EPOCHS}: {epoch_time:.2f} sec")
+                print(f"[{CLIENT_NAME}] Epoch {epoch + 1}/{NUM_EPOCHS}: {epoch_time:.2f} sec")
 
         # ============================================================
         # TOTAL TRAINING TIME
         # ============================================================
         # [EXPERIMENT-ONLY] Inject artificial delays if configured
         delay_sec = 0.0
-        if _is_experiment_enabled("NONSTATIONARY_DELAYS"):
+        if "NONSTATIONARY_DELAYS" in os.environ:
             ns_delays_str = os.environ["NONSTATIONARY_DELAYS"]
             # format: "1:10,2:50,3:30"
             for pair in ns_delays_str.split(","):
@@ -380,10 +361,10 @@ class HospitalClient(fl.client.NumPyClient):
                     if int(r_str.strip()) == round_number:
                         delay_sec = float(d_str.strip())
                         break
-        elif _is_experiment_enabled("ARTIFICIAL_DELAY_SEC"):
+        elif "ARTIFICIAL_DELAY_SEC" in os.environ:
             delay_sec = float(os.environ["ARTIFICIAL_DELAY_SEC"])
 
-        if delay_sec > 0 and RUN_MODE == "experiment":
+        if delay_sec > 0:
             print(f"[{CLIENT_NAME}] [EXPERIMENT] Injecting artificial delay of {delay_sec} seconds...")
             time.sleep(delay_sec)
         total_training_end = time.perf_counter()
@@ -400,8 +381,7 @@ class HospitalClient(fl.client.NumPyClient):
             normal_count += int(torch.sum(batch_labels == 0).item())
             pneumonia_count += int(torch.sum(batch_labels == 1).item())
             
-        if VERBOSE_LOGGING:
-            print(f"[{CLIENT_NAME}] Local Distribution - Normal: {normal_count}, Pneumonia: {pneumonia_count}")
+        print(f"[{CLIENT_NAME}] Local Distribution - Normal: {normal_count}, Pneumonia: {pneumonia_count}")
 
         # ============================================================
         # GET FP32 PARAMETERS
@@ -435,14 +415,11 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # PRINT RESULTS
         # ============================================================
-        if VERBOSE_LOGGING:
-            print(f"[{CLIENT_NAME}] Total Training Time: {total_training_time:.2f} sec")
-            print(f"[{CLIENT_NAME}] FP32 Payload Size: {original_payload_mb:.4f} MB")
-            print(f"[{CLIENT_NAME}] INT8 Payload Size: {quantized_payload_mb:.4f} MB")
-            print(f"[{CLIENT_NAME}] Compression Ratio: {compression_ratio:.2f}x")
-            print(f"[{CLIENT_NAME}] Payload Reduction: {reduction_percent:.2f}%")
-        else:
-            print(f"[{CLIENT_NAME}] R{round_number} | train={total_training_time:.1f}s | payload={quantized_payload_mb:.2f}MB | quantized={compression_ratio:.1f}x")
+        print(f"[{CLIENT_NAME}] Total Training Time: {total_training_time:.2f} sec")
+        print(f"[{CLIENT_NAME}] FP32 Payload Size: {original_payload_mb:.4f} MB")
+        print(f"[{CLIENT_NAME}] INT8 Payload Size: {quantized_payload_mb:.4f} MB")
+        print(f"[{CLIENT_NAME}] Compression Ratio: {compression_ratio:.2f}x")
+        print(f"[{CLIENT_NAME}] Payload Reduction: {reduction_percent:.2f}%")
 
         # ============================================================
         # SAVE TRAINING RECORD
@@ -542,8 +519,8 @@ class HospitalClient(fl.client.NumPyClient):
                 labels = labels.to(device)
                 outputs = net(images)
                 _, predicted = torch.max(outputs, 1)
-                all_labels.extend(labels.cpu().numpy())
-                all_predictions.extend(predicted.cpu().numpy())
+                all_label****tend(labels.cpu().numpy())
+                all_prediction****tend(predicted.cpu().numpy())
 
         import numpy as np
         all_labels = np.array(all_labels)
