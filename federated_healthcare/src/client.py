@@ -59,7 +59,7 @@ DATA_PATH = resolve_data_path(
     CLIENT_NAME
 )
 
-SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "[10.10.27.0:8080]")
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "10.10.27.0:8080")
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 
@@ -284,6 +284,7 @@ class HospitalClient(fl.client.NumPyClient):
         # Display own trust status from previous round (server-injected)
         # Each client sees ONLY its own status, not other hospitals'
         # ----------------------------------------------------------
+        _trust_score = config.get("trust_score")
         if _trust_score is not None:
             _TAG_EMOJI = {"TRUSTED": "🟢", "SUSPICIOUS": "🟡", "UNTRUSTED": "🔴"}
             _tag       = config.get("trust_tag", "TRUSTED")
