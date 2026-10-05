@@ -25,6 +25,12 @@ if os.path.exists(".env"):
                 if k not in os.environ:
                     os.environ[k] = val.strip()
 
+VERBOSE_LOGGING = os.environ.get("VERBOSE_LOGGING", "0") == "1"
+
+if not VERBOSE_LOGGING:
+    import logging
+    logging.getLogger("flwr").setLevel(logging.WARNING)
+
 from collections import OrderedDict
 from flwr.common import parameters_to_ndarrays
 from model import ChestCNN

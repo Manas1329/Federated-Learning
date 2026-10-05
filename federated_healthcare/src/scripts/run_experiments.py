@@ -68,6 +68,7 @@ def run_experiment(
         json.dump(config, f, indent=4)
         
     env = os.environ.copy()
+    env["RUN_MODE"] = "experiment"
     env["USE_DP"] = str(config["USE_DP"])
     env["USE_QUANTIZATION"] = str(config["USE_QUANTIZATION"])
     env["ADAPTIVE_DROPOUT_ENABLED"] = str(config["ADAPTIVE_DROPOUT_ENABLED"])
