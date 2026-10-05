@@ -43,7 +43,7 @@ DATA_PATH = resolve_data_path(
     CLIENT_NAME
 )
 
-SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "[10.10.27.0:8080]")
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 

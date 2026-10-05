@@ -387,6 +387,8 @@ tempCodeRunnerFile.py
 .pytype/
 .cache/
 
+federated-healthcare.tar
+
 # ==========================================
 # IMPORTANT PROJECT OUTPUTS
 # THESE ARE NOT IGNORED AND WILL GO TO GITHUB
