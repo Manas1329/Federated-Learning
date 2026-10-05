@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import csv
+from datetime import datetime
 import flwr as fl
 import torch
 from collections import OrderedDict
@@ -43,7 +44,7 @@ DATA_PATH = resolve_data_path(
     CLIENT_NAME
 )
 
-SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "10.10.27.0:8080")
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 
@@ -157,6 +158,10 @@ else:
 # CSV Setup
 # --------------------------------------------------
 
+# Wall-clock reference: when this client process started (used for concurrency benchmarking)
+_PROCESS_START_WALL = time.perf_counter()
+_PROCESS_START_ISO  = datetime.utcnow().isoformat() + "Z"
+
 if not os.path.exists(CSV_FILE):
     with open(CSV_FILE, "w", newline="") as f:
         writer = csv.writer(f)
@@ -180,7 +185,11 @@ if not os.path.exists(CSV_FILE):
             "delta",
             "dp_noise_multiplier",
             "dp_max_grad_norm",
-            "evaluation_time_sec"
+            "evaluation_time_sec",
+            # Concurrency benchmarking columns
+            "client_start_time",
+            "client_end_time",
+            "client_wall_clock_time_sec"
         ])
 
 
@@ -280,9 +289,10 @@ class HospitalClient(fl.client.NumPyClient):
             print()
 
         # ============================================================
-        # TOTAL TRAINING TIMER
+        # TOTAL TRAINING TIMER + CONCURRENCY WALL-CLOCK
         # ============================================================
         total_training_start = time.perf_counter()
+        fit_start_iso = datetime.utcnow().isoformat() + "Z"
 
         # ============================================================
         # TRAINING CONFIGURATION
@@ -422,6 +432,13 @@ class HospitalClient(fl.client.NumPyClient):
         print(f"[{CLIENT_NAME}] Payload Reduction: {reduction_percent:.2f}%")
 
         # ============================================================
+        # CONCURRENCY WALL-CLOCK MEASUREMENT
+        # ============================================================
+        fit_end_iso = datetime.utcnow().isoformat() + "Z"
+        # Wall-clock time from process start to end of this fit() call
+        client_wall_clock_time = time.perf_counter() - _PROCESS_START_WALL
+
+        # ============================================================
         # SAVE TRAINING RECORD
         # ============================================================
         with open(CSV_FILE, "a", newline="") as f:
@@ -446,7 +463,10 @@ class HospitalClient(fl.client.NumPyClient):
                     DP_DELTA if USE_DP else "",                 # delta
                     DP_NOISE_MULTIPLIER if USE_DP else "",      # dp_noise_multiplier
                     DP_MAX_GRAD_NORM if USE_DP else "",         # dp_max_grad_norm
-                    ""                                          # evaluation_time_sec
+                    "",                                         # evaluation_time_sec
+                    fit_start_iso,                              # client_start_time
+                    fit_end_iso,                                # client_end_time
+                    round(client_wall_clock_time, 4)            # client_wall_clock_time_sec
                 ])
 
         # ============================================================
