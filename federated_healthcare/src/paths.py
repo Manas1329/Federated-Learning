@@ -61,10 +61,21 @@ def resolve_data_path(env_data_path: str = None, client_name: str = None) -> Pat
         # If they just passed the folder name e.g. "hospital_A" instead of "data/hospital_A"
         if "data" not in env_str:
             return DATA_DIR / env_str
-            
-        return PROJECT_ROOT / env_str
+
+        candidate = PROJECT_ROOT / env_str
+        if candidate.exists():
+            return candidate
+
+        # Handle './data/hospital_X' when data is inside federated_healthcare/data
+        sub_path = env_str.replace("data/", "").replace("data\\", "")
+        if (DATA_DIR / sub_path).exists():
+            return DATA_DIR / sub_path
+        if (DATA_DIR / env_str).exists():
+            return DATA_DIR / env_str
+
+        return candidate
         
     if client_name:
         return DATA_DIR / client_name.lower()
         
-    return DATA_DIR / "hospital_A"
+    return DATA_DIR / "hospital_a"
