@@ -288,7 +288,7 @@ ENV/
 env.bak/
 venv.bak/
 fl/
-xray/
+xray/    
 
 # ==========================================
 # ENVIRONMENT VARIABLES / SECRETS

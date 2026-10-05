@@ -516,10 +516,32 @@ if __name__ == "__main__":
         models_dir=MODEL_DIR
     )
 
-    print("Starting Adaptive Flower Server with Dropout Handling...")
+    # Bind address: default 0.0.0.0 (all network interfaces, reachable by remote clients).
+    # Override with FL_SERVER_BIND if you need to bind to a specific interface.
+    # Override with FL_PORT if you need a non-default port.
+    # Do NOT set this to 'localhost' or '127.0.0.1' in a real multi-device deployment —
+    # remote hospital clients would not be able to connect.
+    FL_SERVER_BIND = os.environ.get("FL_SERVER_BIND", "0.0.0.0")
+    FL_PORT = int(os.environ.get("FL_PORT", "8080"))
+    bind_address = f"{FL_SERVER_BIND}:{FL_PORT}"
+
+    print(f"Starting Adaptive Flower Server with Dropout Handling...")
+    print(f"  Binding on          : {bind_address}")
+    print(f"  Target clients      : {TARGET_CLIENTS}")
+    print(f"  Minimum clients     : {MIN_CLIENTS}")
+    print(f"  FL rounds           : {TOTAL_ROUNDS}")
+    print(f"  Round timeout       : {ROUND_TIMEOUT} sec")
+    print(f"  Dropout hard limit  : {DROPOUT_HARD_DEADLINE} sec")
+    print(f"  DP enabled          : {USE_DP}")
+    print(f"  Quantization        : {USE_QUANTIZATION}")
+    print()
+    print(f"  Remote hospital clients should connect with:")
+    print(f"    SERVER_ADDRESS=<this-machine-LAN-IP>:{FL_PORT}")
+    print(f"    python federated_healthcare/src/client.py")
+    print()
 
     fl.server.start_server(
-        server_address="0.0.0.0:8080",
+        server_address=bind_address,
         server=server,
         config=fl.server.ServerConfig(
             num_rounds=TOTAL_ROUNDS,
