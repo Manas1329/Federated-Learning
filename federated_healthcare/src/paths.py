@@ -43,39 +43,43 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 def resolve_data_path(env_data_path: str = None, client_name: str = None) -> Path:
     """
     Resolve the data path for a client robustly.
-    1. If env_data_path is an absolute path that exists, use it.
-    2. If env_data_path is a relative path (e.g., './data/hospital_A' or 'data/hospital_A'), 
-       resolve it relative to PROJECT_ROOT.
-    3. If env_data_path is missing but client_name is provided (e.g., 'Hospital_A'), 
-       derive it as PROJECT_ROOT / "data" / client_name.lower()
-    4. Fallback to PROJECT_ROOT / "data" / "hospital_A"
+    Tries multiple candidate locations in order:
+    1. If env_data_path is provided:
+       - Direct absolute or relative to cwd
+       - Relative to SRC_DIR (e.g. '../data/hospital_A')
+       - Relative to FEDERATED_HEALTHCARE_DIR
+       - Inside DATA_DIR by directory name
+    2. If client_name is provided:
+       - Case-insensitive search inside DATA_DIR
+    3. Fallback to hospital_A inside DATA_DIR
     """
     if env_data_path:
-        env_path = Path(env_data_path)
-        if env_path.is_absolute():
-            return env_path
-        
-        # If it starts with ./ or .\ strip it for clean path joining
-        env_str = env_data_path.replace("./", "").replace(".\\", "")
-        
-        # If they just passed the folder name e.g. "hospital_A" instead of "data/hospital_A"
-        if "data" not in env_str:
-            return DATA_DIR / env_str
+        p = Path(env_data_path)
+        candidates = [
+            p.resolve() if p.is_absolute() else None,
+            (Path.cwd() / p).resolve(),
+            (SRC_DIR / p).resolve(),
+            (FEDERATED_HEALTHCARE_DIR / p).resolve(),
+            (DATA_DIR / p.name).resolve(),
+        ]
+        for candidate in candidates:
+            if candidate and candidate.exists() and (candidate / "train").exists():
+                return candidate
 
-        candidate = PROJECT_ROOT / env_str
-        if candidate.exists():
-            return candidate
+    target_name = (client_name or "").strip()
+    if target_name:
+        if (DATA_DIR / target_name).exists() and (DATA_DIR / target_name / "train").exists():
+            return DATA_DIR / target_name
+        if (DATA_DIR / target_name.lower()).exists() and (DATA_DIR / target_name.lower() / "train").exists():
+            return DATA_DIR / target_name.lower()
+        if DATA_DIR.exists():
+            for d in DATA_DIR.iterdir():
+                if d.is_dir() and d.name.lower() == target_name.lower() and (d / "train").exists():
+                    return d
 
-        # Handle './data/hospital_X' when data is inside federated_healthcare/data
-        sub_path = env_str.replace("data/", "").replace("data\\", "")
-        if (DATA_DIR / sub_path).exists():
-            return DATA_DIR / sub_path
-        if (DATA_DIR / env_str).exists():
-            return DATA_DIR / env_str
+    for fallback in ["hospital_A", "hospital_a", "Hospital_A"]:
+        cand = DATA_DIR / fallback
+        if cand.exists() and (cand / "train").exists():
+            return cand
 
-        return candidate
-        
-    if client_name:
-        return DATA_DIR / client_name.lower()
-        
-    return DATA_DIR / "hospital_a"
+    return DATA_DIR / (client_name or "hospital_A")

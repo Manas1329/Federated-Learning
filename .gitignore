@@ -288,7 +288,7 @@ ENV/
 env.bak/
 venv.bak/
 fl/
-xray/    
+xray/
 
 # ==========================================
 # ENVIRONMENT VARIABLES / SECRETS
@@ -378,8 +378,6 @@ tempCodeRunnerFile.py
 *.bak
 *~
 
-federated-healthcare.tar
-
 # ==========================================
 # TOOL CACHES
 # ==========================================
@@ -388,8 +386,6 @@ federated-healthcare.tar
 .pyre/
 .pytype/
 .cache/
-
-federated-healthcare.tar
 
 # ==========================================
 # IMPORTANT PROJECT OUTPUTS
@@ -406,3 +402,7 @@ federated-healthcare.tar
 
 # CSV, PTH, PT and PNG files are intentionally
 # NOT ignored because they contain experiment results.
+
+# Node dependencies
+node_modules/
+**/node_modules/

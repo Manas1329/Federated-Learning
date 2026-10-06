@@ -4,6 +4,7 @@ import time
 import pandas as pd
 import torch
 import math
+from typing import Optional, Set, Dict, List, Tuple
 
 # Trust / Tagging Module (Phase 1)
 # Wrapped in try/except: if import fails, training continues normally
@@ -14,9 +15,12 @@ except Exception as _te:
     _TRUST_OK = False
     print(f"[TrustManager] Import warning: {_te}")
 
-# Load environment variables from .env file if present
-if os.path.exists(".env"):
-    with open(".env") as f:
+# Load environment variables from .env file if present.
+# Look relative to THIS script's location (src/../.env = federated_healthcare/.env)
+# so that the server works correctly when run from any working directory.
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+if os.path.exists(_env_path):
+    with open(_env_path) as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
@@ -62,6 +66,14 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
+# Set of all known federation participants — used by the auto-unlearn trigger.
+# Overridable via environment variable: KNOWN_CLIENTS=Hospital_A,Hospital_B,Hospital_C
+KNOWN_CLIENTS: set = {
+    c.strip()
+    for c in os.environ.get("KNOWN_CLIENTS", "Hospital_A,Hospital_B,Hospital_C").split(",")
+    if c.strip()
+}
+
 from pathlib import Path
 import sys
 # Ensure 'src' package is importable regardless of where the script is run from
@@ -97,6 +109,204 @@ round_start_times = {}
 
 
 # --------------------------------------------------
+# Post-Training Unlearning Auto-Trigger
+# --------------------------------------------------
+
+def _trigger_post_training_unlearning(
+    quarantined_clients: set,
+    suffix: str,
+    active_clients: set,
+):
+    """
+    Called automatically after the final FL round checkpoint is saved.
+
+    For each client that was quarantined at any point during training,
+    this function runs the full post-training unlearning pipeline:
+        1. Gradient-ascent erasure of the target client's historical contribution.
+        2. DACM distribution audit on surviving clients.
+        3. Compensatory FedAvg recovery retraining.
+        4. Three-stage evaluation (before / after unlearn / after recovery).
+        5. Saves the recovered model as dacm_recovered_<target>_<suffix>.pth
+
+    The existing quarantine/gating logic is NOT affected — exclusion from the
+    current round's FedAvg has already happened before this function is called.
+    """
+    print("\n" + "=" * 62)
+    print("  [AUTO-UNLEARN] POST-TRAINING UNLEARNING TRIGGERED")
+    print("=" * 62)
+    print(f"  [AUTO-UNLEARN] Quarantined clients detected : {quarantined_clients}")
+    print(f"  [AUTO-UNLEARN] Final checkpoint suffix      : {suffix}")
+    print(f"  [AUTO-UNLEARN] Active federation members   : {sorted(active_clients)}")
+    print("  [AUTO-UNLEARN] Reason: Historical contributions from quarantined")
+    print("  [AUTO-UNLEARN] clients remain in the global model from earlier rounds.")
+    print("  [AUTO-UNLEARN] Gradient-ascent unlearning + DACM recovery will now")
+    print("  [AUTO-UNLEARN] remove that influence from the saved checkpoint.")
+    print("=" * 62)
+
+    # Lazy import — avoids touching flwr/tensorflow chain at server startup.
+    try:
+        from unlearn_workflow import run_unlearn_workflow
+    except Exception as import_err:
+        print(f"[AUTO-UNLEARN] ERROR: Could not import unlearn_workflow: {import_err}")
+        print("[AUTO-UNLEARN] Post-training unlearning could not run.")
+        return
+
+    # Process each quarantined client sequentially.
+    # active_clients is mutated in-place by run_unlearn_workflow on success,
+    # so subsequent unlearning calls see the correct surviving set.
+    remaining_active = set(active_clients)
+    for target in sorted(quarantined_clients):
+        print(f"\n[AUTO-UNLEARN] ── Starting post-training unlearning for: {target} ──")
+        try:
+            success = run_unlearn_workflow(
+                target_client=target,
+                suffix=suffix,
+                active_clients=remaining_active,
+            )
+            if success:
+                print(f"[AUTO-UNLEARN] ✓ Unlearning workflow completed for {target}.")
+                print(f"[AUTO-UNLEARN]   {target} has been erased from the global model.")
+                print(f"[AUTO-UNLEARN]   Remaining active clients: {sorted(remaining_active)}")
+                # Record in all_global_models_registry.csv if present
+                registry_file = MODELS_DIR / "all_global_models_registry.csv"
+                if registry_file.exists():
+                    try:
+                        import datetime
+                        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        rec_model_name = f"dacm_recovered_{target}_{suffix}"
+                        surv_str = "|".join(sorted(remaining_active))
+                        with open(registry_file, "a", newline="") as rf:
+                            import csv
+                            writer = csv.writer(rf)
+                            writer.writerow([
+                                ts,
+                                rec_model_name,
+                                surv_str,
+                                len(remaining_active),
+                                0,
+                                len(remaining_active),
+                                1,
+                                "",
+                                ""
+                            ])
+                        print(f"[AUTO-UNLEARN] Registered {rec_model_name} in model registry associated with {surv_str}.")
+                    except Exception as reg_err:
+                        print(f"[AUTO-UNLEARN] Note: Could not update registry: {reg_err}")
+            else:
+                print(f"[AUTO-UNLEARN] ✗ Unlearning workflow returned False for {target}.")
+                print(f"[AUTO-UNLEARN]   Check logs above for the specific failure reason.")
+        except Exception as unlearn_err:
+            print(f"[AUTO-UNLEARN] ✗ Exception during unlearning of {target}: {unlearn_err}")
+            import traceback
+            traceback.print_exc()
+            print(f"[AUTO-UNLEARN]   Continuing to next quarantined client (if any).")
+
+    print("\n" + "=" * 62)
+    print("  [AUTO-UNLEARN] POST-TRAINING UNLEARNING STAGE COMPLETE")
+    print("=" * 62)
+
+
+# --------------------------------------------------
+# Persistent Exclusion Helpers
+# --------------------------------------------------
+
+def _get_excluded_cids(excluded_names: set) -> set:
+    """
+    Translate a set of human-readable client names into the Flower cid strings
+    that the ClientProxy/ClientManager use internally.
+
+    Reads from trust_manager.cid_to_name (populated by record_update after
+    round 1).  Returns an empty set when TrustManager is unavailable or when
+    no cid mapping exists yet (e.g., round 1).
+    """
+    if not _TRUST_OK or not excluded_names:
+        return set()
+    return {
+        cid
+        for cid, name in _tm.cid_to_name.items()
+        if name in excluded_names
+    }
+
+
+def _check_promote_to_excluded(
+    quarantined_names: set,
+    excluded_names: set,
+    rejected_names: set = None,
+) -> set:
+    """
+    Examine clients with gating decisions from the current round against their
+    PREVIOUS round's Trust Tag (stored in latest_trust).
+
+    Rules:
+    1. SUSPICIOUS tag + QUARANTINE decision -> Permanent Exclusion
+    2. UNTRUSTED tag  + (QUARANTINE or REJECT) decision -> Permanent Exclusion
+
+    Uses the previous-round tag because finalize_round() — which assigns the
+    current-round tag — has not yet run at aggregate_fit time.
+
+    Returns the set of names that were newly promoted this call.
+    """
+    newly_excluded: set = set()
+    if not _TRUST_OK:
+        return newly_excluded
+
+    if rejected_names is None:
+        rejected_names = set()
+
+    # Build a reverse lookup: name -> cid (trust_manager stores cid->name)
+    name_to_cid = {v: k for k, v in _tm.cid_to_name.items()}
+
+    def _get_tag(name: str) -> Optional[str]:
+        trust_info = None
+        # Primary lookup: direct from client_state by client name
+        if hasattr(_tm, "client_state") and name in _tm.client_state:
+            trust_info = _tm.client_state[name].get("latest_trust")
+        if not trust_info:
+            cid = name_to_cid.get(name)
+            if cid:
+                trust_info = _tm.get_trust_for_cid(cid)
+        return trust_info.get("tag") if trust_info else None
+
+    # Check quarantined clients: SUSPICIOUS or UNTRUSTED
+    for name in quarantined_names:
+        if name in excluded_names:
+            continue  # already excluded
+        tag = _get_tag(name)
+        if tag == "SUSPICIOUS":
+            newly_excluded.add(name)
+            print(
+                f"\n[EXCL] {name} -> PERMANENTLY EXCLUDED"
+                f" (QUARANTINE + SUSPICIOUS tag)."
+                f" Will not be selected for training or evaluation"
+                f" in any subsequent round."
+            )
+        elif tag == "UNTRUSTED":
+            newly_excluded.add(name)
+            print(
+                f"\n[EXCL] {name} -> PERMANENTLY EXCLUDED"
+                f" (QUARANTINE + UNTRUSTED tag)."
+                f" Will not be selected for training or evaluation"
+                f" in any subsequent round."
+            )
+
+    # Check rejected clients: UNTRUSTED only
+    for name in rejected_names:
+        if name in excluded_names or name in newly_excluded:
+            continue  # already excluded
+        tag = _get_tag(name)
+        if tag == "UNTRUSTED":
+            newly_excluded.add(name)
+            print(
+                f"\n[EXCL] {name} -> PERMANENTLY EXCLUDED"
+                f" (REJECT + UNTRUSTED tag)."
+                f" Will not be selected for training or evaluation"
+                f" in any subsequent round."
+            )
+
+    return newly_excluded
+
+
+# --------------------------------------------------
 # Custom FedAvg Strategy
 # --------------------------------------------------
 
@@ -107,6 +317,61 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         super().__init__(*args, **kwargs)
         # Default weight is 1.0 (normal training)
         self.dacu_recovery_weight = 1.0
+        # Accumulates every client name that received a QUARANTINE decision
+        # across any round during training. Populated in aggregate_fit.
+        # Used after the final round to auto-trigger post-training unlearning.
+        self.quarantined_clients: set = set()
+        # Total rounds configured for this run — used to detect the final round.
+        self.total_rounds: int = TOTAL_ROUNDS
+        # ── Persistent exclusion ──────────────────────────────────────────
+        # Clients added here are NEVER selected for training or evaluation again.
+        # Populated when a client gets QUARANTINE gate + SUSPICIOUS trust tag.
+        self.excluded_names: set = set()
+        # Matching Flower cid strings — derived from excluded_names via cid_to_name.
+        # Refreshed at the start of configure_fit / configure_evaluate each round.
+        self.excluded_cids: set  = set()
+        # Original target count, stored so we can decrement min_fit_clients /
+        # min_evaluate_clients / min_available_clients when clients are excluded
+        # and Flower would otherwise block waiting for the excluded client.
+        self._initial_target_clients: int = int(
+            self.min_fit_clients
+        ) if hasattr(self, "min_fit_clients") else int(
+            os.environ.get("TARGET_CLIENTS", "3")
+        )
+
+    def _refresh_exclusion(self) -> None:
+        """Re-derive excluded_cids from excluded_names via trust_manager's cid map.
+
+        Safe to call every round: the cid_to_name map grows monotonically as
+        clients connect, so later calls may resolve names that were unresolvable
+        in earlier rounds.
+        """
+        self.excluded_cids = _get_excluded_cids(self.excluded_names)
+
+    def _reduce_quorum_for_exclusions(self) -> None:
+        """
+        Adjust min_fit_clients, min_evaluate_clients, and min_available_clients
+        to reflect the reduced federation size after permanent exclusions.
+
+        Without this, Flower's client_manager.sample() will block indefinitely
+        waiting for the excluded client to become available.
+
+        The adjusted value is max(1, original_target - len(excluded)).
+        """
+        n_excluded = len(self.excluded_names)
+        if n_excluded == 0:
+            return
+        new_target = max(1, self._initial_target_clients - n_excluded)
+        new_min    = max(1, new_target - 1)          # at least 1 below target
+        if self.min_fit_clients != new_target or self.min_available_clients > new_min:
+            print(
+                f"[EXCL] Adjusting Flower quorum: "
+                f"min_fit_clients {self.min_fit_clients} -> {new_target}, "
+                f"min_available_clients {self.min_available_clients} -> {new_min}"
+            )
+            self.min_fit_clients      = new_target
+            self.min_evaluate_clients = new_target
+            self.min_available_clients = new_min
 
     def configure_fit(
         self,
@@ -122,6 +387,27 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         print("=" * 60)
         print(f"Starting Federated Round {server_round}")
         print("=" * 60)
+
+        # ── Sync exclusion cids and adjust quorum before sampling ─────────────
+        self._refresh_exclusion()
+        self._reduce_quorum_for_exclusions()
+
+        if self.excluded_names:
+            print(
+                f"[EXCL] Permanently excluded clients (will not be selected): "
+                f"{sorted(self.excluded_names)}"
+            )
+
+        # Unregister permanently excluded clients from Flower client_manager
+        # so they can never be sampled by client_manager
+        if self.excluded_cids:
+            all_cm_clients = client_manager.all()
+            for exc_cid in list(self.excluded_cids):
+                if exc_cid in all_cm_clients:
+                    try:
+                        client_manager.unregister(all_cm_clients[exc_cid])
+                    except Exception:
+                        pass
 
         # Store global params for trust update-norm computation
         if _TRUST_OK:
@@ -145,22 +431,26 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             min_num_clients=self.min_available_clients
         )
 
-        # Build per-client FitIns — inject previous-round trust score if available
+        # ── Filter out permanently excluded clients ───────────────────────────
+        # Flower's client_manager has no awareness of our exclusion set, so we
+        # filter the sampled list here.  The quorum adjustment above ensures
+        # sample_size already reflects the smaller active federation.
+        if self.excluded_cids:
+            before = len(clients)
+            clients = [c for c in clients if c.cid not in self.excluded_cids]
+            after   = len(clients)
+            if before != after:
+                excluded_str = ", ".join(sorted(self.excluded_names))
+                print(
+                    f"[EXCL] configure_fit Round {server_round}: "
+                    f"removed {before - after} excluded client(s) from fit list "
+                    f"[{excluded_str}]"
+                )
+
+        # Build per-client FitIns — send only operational training config (trust is server-side only)
         result = []
         for client in clients:
             config = dict(base_config)
-            if _TRUST_OK:
-                try:
-                    trust_info = _tm.get_trust_for_cid(client.cid)
-                    if trust_info:
-                        config["trust_score"]       = float(trust_info["trust_score"])
-                        config["trust_tag"]         = str(trust_info["tag"])
-                        config["trust_update"]      = float(trust_info["update_score"])
-                        config["trust_training"]    = float(trust_info["training_score"])
-                        config["trust_history"]     = float(trust_info["historical_score"])
-                        config["trust_reliability"] = float(trust_info["reliability_score"])
-                except Exception:
-                    pass
             result.append((client, fl.common.FitIns(parameters, config)))
 
         return result
@@ -171,6 +461,19 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         parameters,
         client_manager,
     ):
+        self._refresh_exclusion()
+        self._reduce_quorum_for_exclusions()
+
+        # Unregister permanently excluded clients from Flower client_manager
+        if self.excluded_cids:
+            all_cm_clients = client_manager.all()
+            for exc_cid in list(self.excluded_cids):
+                if exc_cid in all_cm_clients:
+                    try:
+                        client_manager.unregister(all_cm_clients[exc_cid])
+                    except Exception:
+                        pass
+
         config = {
             "server_round": server_round
         }
@@ -185,6 +488,17 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             num_clients=sample_size,
             min_num_clients=self.min_available_clients
         )
+
+        # ── Filter out permanently excluded clients from evaluation ────────────
+        if self.excluded_cids:
+            before = len(clients)
+            clients = [c for c in clients if c.cid not in self.excluded_cids]
+            if before != len(clients):
+                print(
+                    f"[EXCL] configure_evaluate Round {server_round}: "
+                    f"removed {before - len(clients)} excluded client(s) from eval list"
+                )
+
         return [
             (client, evaluate_ins)
             for client in clients
@@ -230,7 +544,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             dequantized_results = results
 
         # ==========================================================
-        # TRUST MODULE: record update behaviour per client
+        # TRUST MODULE: record update behaviour per client (Stage 1)
         # Wrapped in try/except — FL training continues even if this fails
         # ==========================================================
         if _TRUST_OK:
@@ -247,13 +561,144 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             except Exception as _e:
                 print(f"[TrustManager] aggregate_fit warning: {_e}")
 
+        # ── Drop updates from any reconnected permanently excluded clients ────
+        clean_dequantized = []
+        for _cp, _fit_res in dequantized_results:
+            _cname = _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
+            if _cname in self.excluded_names:
+                print(
+                    f"\n[EXCL] RECONNECTION BLOCKED: {_cname} (CID: {_cp.cid}) is "
+                    f"PERMANENTLY EXCLUDED. Discarding update from aggregation."
+                )
+                self.excluded_cids.add(_cp.cid)
+                if _TRUST_OK:
+                    _tm.cid_to_name[_cp.cid] = _cname
+                continue
+            clean_dequantized.append((_cp, _fit_res))
+        dequantized_results = clean_dequantized
+
         # ==========================================================
-        # FEDAVG
+        # PRE-AGGREGATION TRUST GATE
+        # ──────────────────────────────────────────────────────────
+        # After recording all client updates, apply the pre-aggregation
+        # gating decision BEFORE calling FedAvg.
+        #
+        # WHY SEPARATE FROM FEDAVG?
+        # - A quarantined/rejected client's update must NOT enter FedAvg.
+        #   Passing it to super().aggregate_fit() would contaminate the
+        #   global model before any unlearning/recovery can act.
+        # - The existing DACM distribution audit block below this still
+        #   runs on ALL clients (including quarantined) so it can detect
+        #   distribution shifts across the full federation.
+        # - FedAvg continues to use sample-count weighting for accepted
+        #   clients — Trust Score is NOT used as a FedAvg weight.
+        #
+        # QUARANTINE → EXISTING DACM/UNLEARNING:
+        # - Quarantined clients are excluded from FedAvg this round.
+        # - The in-round DACM distribution audit (below) handles recovery
+        #   weight computation for the next round.
+        # - Post-training: run_unlearn_workflow() (unlearn_server.py) is
+        #   available unchanged for full unlearning + DACM recovery.
+        # ==========================================================
+        accepted_results    = []
+        quarantined_results = []
+        rejected_results    = []
+
+        if _TRUST_OK:
+            try:
+                _decisions = _tm.get_pre_agg_decisions()
+
+                if _decisions:
+                    print("\n" + "=" * 60)
+                    print(f"  PRE-AGGREGATION TRUST GATE — Round {server_round}")
+                    print("=" * 60)
+
+                for _cp, _fit_res in dequantized_results:
+                    _cname = _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
+                    _dec   = _decisions.get(_cname, "ACCEPT")
+
+                    if _dec == "ACCEPT":
+                        accepted_results.append((_cp, _fit_res))
+                        if _decisions:
+                            print(f"  {_cname:<20} → ✅ ACCEPT   (enters FedAvg)")
+                    elif _dec == "QUARANTINE":
+                        quarantined_results.append((_cp, _fit_res))
+                        # Accumulate for post-training unlearning (fired after final round)
+                        self.quarantined_clients.add(_cname)
+                        print(f"  {_cname:<20} -> QUARANTINE (excluded from FedAvg; "
+                              f"scheduled for post-training unlearning after round {self.total_rounds})")
+                    else:  # REJECT
+                        rejected_results.append((_cp, _fit_res))
+                        print(f"  {_cname:<20} -> REJECT    (excluded from aggregation)")
+
+                if _decisions:
+                    print("=" * 60)
+
+                # ── Persistent exclusion:
+                # 1. SUSPICIOUS + QUARANTINE -> Permanent Exclusion
+                # 2. UNTRUSTED + (QUARANTINE or REJECT) -> Permanent Exclusion
+                _newly_quarantined_names = {
+                    _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
+                    for _cp, _fit_res in quarantined_results
+                }
+                _newly_rejected_names = {
+                    _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
+                    for _cp, _fit_res in rejected_results
+                }
+                if _newly_quarantined_names or _newly_rejected_names:
+                    _newly_excluded = _check_promote_to_excluded(
+                        quarantined_names=_newly_quarantined_names,
+                        excluded_names=self.excluded_names,
+                        rejected_names=_newly_rejected_names,
+                    )
+                    if _newly_excluded:
+                        self.excluded_names.update(_newly_excluded)
+                        # Immediately refresh cid mapping so subsequent rounds
+                        # have the correct excluded_cids set.
+                        self.excluded_cids = _get_excluded_cids(self.excluded_names)
+                        # Adjust Flower quorum right away so the next round's
+                        # configure_fit doesn't block on the excluded client.
+                        self._reduce_quorum_for_exclusions()
+
+                # Handle edge cases
+                if not accepted_results:
+                    if quarantined_results:
+                        # All clients quarantined — fall back to accepting all to prevent
+                        # a round with zero updates (catastrophic failure mode).
+                        print("[TRUST GATE] WARNING: All clients quarantined/rejected.")
+                        print("[TRUST GATE] Falling back to accepting all updates to prevent round failure.")
+                        print("[TRUST GATE] Review anomaly thresholds in PRE_AGG_CONFIG.")
+                        accepted_results = dequantized_results
+                        quarantined_results = []
+                    elif rejected_results:
+                        print("[TRUST GATE] WARNING: All clients rejected — no valid updates.")
+                        print("[TRUST GATE] Falling back to accepting all to prevent catastrophic failure.")
+                        accepted_results = dequantized_results
+                        rejected_results = []
+
+            except Exception as _ge:
+                print(f"[TRUST GATE] Warning: {_ge} — using all dequantized results")
+                accepted_results    = dequantized_results
+                quarantined_results = []
+        else:
+            # Trust module not loaded — pass all updates to FedAvg normally
+            accepted_results = dequantized_results
+
+        # Log gate summary
+        if quarantined_results or rejected_results:
+            _n_acc  = len(accepted_results)
+            _n_quar = len(quarantined_results)
+            _n_rej  = len(rejected_results)
+            print(f"[TRUST GATE] FedAvg input: {_n_acc} ACCEPTED, "
+                  f"{_n_quar} QUARANTINED, {_n_rej} REJECTED")
+
+        # ==========================================================
+        # FEDAVG (only accepted clients)
         # ==========================================================
         aggregated_parameters, aggregated_metrics = (
             super().aggregate_fit(
                 server_round,
-                dequantized_results,
+                accepted_results,   # ← only ACCEPTED updates enter FedAvg
                 failures,
             )
         )
@@ -331,6 +776,32 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 print("Global Model Saved Successfully")
                 print(MODEL_PATH)
                 print("=" * 60)
+
+                # ============================================================
+                # AUTO-TRIGGER: Post-Training Unlearning for Excluded/Quarantined Clients
+                # ============================================================
+                # This fires AFTER the final-round checkpoint is saved, so the
+                # unlearning pipeline always loads a clean, fully-converged model.
+                #
+                # Quarantine (above) only excluded the client from the CURRENT
+                # round's FedAvg. The client's contributions from earlier rounds
+                # are still present in the saved checkpoint. Gradient-ascent
+                # unlearning + DACM recovery removes that historical influence.
+                # ============================================================
+                targets_to_unlearn = self.quarantined_clients | self.excluded_names
+                if targets_to_unlearn:
+                    # Pass the surviving active clients (KNOWN_CLIENTS minus
+                    # those permanently excluded) so DACM recovery only involves
+                    # clients that are genuinely still in the federation.
+                    _surviving_clients = KNOWN_CLIENTS - self.excluded_names
+                    _trigger_post_training_unlearning(
+                        quarantined_clients=targets_to_unlearn,
+                        suffix=SUFFIX,
+                        active_clients=_surviving_clients,
+                    )
+                else:
+                    print("[AUTO-UNLEARN] No quarantined or excluded clients detected — "
+                          "post-training unlearning not required.")
 
         # ==========================================================
         # SAVE ROUND METRICS
