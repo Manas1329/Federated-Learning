@@ -15,19 +15,26 @@ except Exception as _te:
     _TRUST_OK = False
     print(f"[TrustManager] Import warning: {_te}")
 
-# Load environment variables from .env file if present.
-# Look relative to THIS script's location (src/../.env = federated_healthcare/.env)
-# so that the server works correctly when run from any working directory.
-_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
-if os.path.exists(_env_path):
-    with open(_env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                k = key.strip()
-                if k not in os.environ:
-                    os.environ[k] = val.strip()
+# Load environment variables from .env file if present (search cwd, src, parent, project root)
+from pathlib import Path
+_curr = Path(__file__).resolve().parent
+_candidates = [
+    Path.cwd() / ".env",
+    _curr / ".env",
+    _curr.parent / ".env",
+    _curr.parent.parent / ".env",
+]
+for _cand in _candidates:
+    if _cand.exists():
+        with open(_cand) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    k = key.strip()
+                    if k not in os.environ:
+                        os.environ[k] = val.strip()
+        break
 
 VERBOSE_LOGGING = os.environ.get("VERBOSE_LOGGING", "0") == "1"
 

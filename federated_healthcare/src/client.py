@@ -13,22 +13,31 @@ from quantization import (
     quantize_parameters,
 )
 
-# Load environment variables from .env file if present
-if os.path.exists(".env"):
-    with open(".env") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                k = key.strip()
-                if k not in os.environ:
-                    os.environ[k] = val.strip()
-
 from pathlib import Path
 import sys
 
 # Ensure 'src' package is importable regardless of where the script is run from
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# Load environment variables from .env file if present (search cwd, src, parent, project root)
+_curr = Path(__file__).resolve().parent
+_candidates = [
+    Path.cwd() / ".env",
+    _curr / ".env",
+    _curr.parent / ".env",
+    _curr.parent.parent / ".env",
+]
+for _cand in _candidates:
+    if _cand.exists():
+        with open(_cand) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    k = key.strip()
+                    if k not in os.environ:
+                        os.environ[k] = val.strip()
+        break
 
 from paths import resolve_data_path, RESULTS_DIR
 
@@ -44,7 +53,7 @@ DATA_PATH = resolve_data_path(
     CLIENT_NAME
 )
 
-SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "10.10.27.0:8080")
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "localhost:8080")
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 

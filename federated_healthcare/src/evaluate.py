@@ -4,16 +4,26 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-# Load environment variables from .env file if present
-if os.path.exists(".env"):
-    with open(".env") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                k = key.strip()
-                if k not in os.environ:
-                    os.environ[k] = val.strip()
+# Load environment variables from .env file if present (search cwd, src, parent, project root)
+from pathlib import Path
+_curr = Path(__file__).resolve().parent
+_candidates = [
+    Path.cwd() / ".env",
+    _curr / ".env",
+    _curr.parent / ".env",
+    _curr.parent.parent / ".env",
+]
+for _cand in _candidates:
+    if _cand.exists():
+        with open(_cand) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    k = key.strip()
+                    if k not in os.environ:
+                        os.environ[k] = val.strip()
+        break
 
 
 from sklearn.metrics import (
