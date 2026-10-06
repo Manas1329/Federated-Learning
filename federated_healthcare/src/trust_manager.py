@@ -70,10 +70,24 @@ Usage in server.py:
 
 import csv
 import os
+import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+# Enable ANSI colors & UTF-8 output on Windows terminals
+try:
+    import colorama
+    colorama.init(autoreset=False)
+except Exception:
+    pass
+
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 # Pre-aggregation gate (anomaly scoring and decision)
 try:
@@ -142,6 +156,24 @@ TRUST_CONFIG: Dict = {
     "training_dist_moderation_max":       0.50,   # max reduction fraction (50%)
 }
 
+# Terminal ANSI Color Codes
+_COLOR_GREEN  = "\033[1;92m"   # Bold Bright Green
+_COLOR_YELLOW = "\033[1;93m"   # Bold Bright Yellow/Amber
+_COLOR_RED    = "\033[1;91m"   # Bold Bright Red
+_COLOR_RESET  = "\033[0m"
+
+TAG_COLORS = {
+    "TRUSTED":    _COLOR_GREEN,
+    "SUSPICIOUS": _COLOR_YELLOW,
+    "UNTRUSTED":  _COLOR_RED,
+}
+
+DECISION_COLORS = {
+    "ACCEPT":     _COLOR_GREEN,
+    "QUARANTINE": _COLOR_YELLOW,
+    "REJECT":     _COLOR_RED,
+}
+
 # Emoji labels for tags
 TAG_DISPLAY = {
     "TRUSTED":    "TRUSTED",
@@ -160,6 +192,24 @@ DECISION_EMOJI = {
     "QUARANTINE": "🔶 QUARANTINE",
     "REJECT":     "❌ REJECT",
 }
+
+def colorize_tag(tag: str, width: Optional[int] = None) -> str:
+    """Format trust tag with circular badge and terminal color."""
+    emoji = {"TRUSTED": "🟢", "SUSPICIOUS": "🟡", "UNTRUSTED": "🔴"}.get(tag, "⚪")
+    color = TAG_COLORS.get(tag, "")
+    text  = f"{emoji} {tag}"
+    if width is not None:
+        text = f"{text:<{width}}"
+    return f"{color}{text}{_COLOR_RESET}"
+
+def colorize_decision(decision: str, width: Optional[int] = None) -> str:
+    """Format gating decision with badge and terminal color."""
+    emoji = {"ACCEPT": "✅", "QUARANTINE": "🔶", "REJECT": "❌"}.get(decision, "•")
+    color = DECISION_COLORS.get(decision, "")
+    text  = f"{emoji} {decision}"
+    if width is not None:
+        text = f"{text:<{width}}"
+    return f"{color}{text}{_COLOR_RESET}"
 
 # Reputation penalty added to effective anomaly score in get_pre_agg_decisions().
 # The previous round's Trust Tag makes the pre-aggregation gate stricter for
@@ -799,6 +849,21 @@ class TrustManager:
             name
             for name, data in self.client_state.items()
             if data.get("latest_trust", {}).get("tag") == "SUSPICIOUS"
+        }
+
+    def get_untrusted_clients(self) -> set:
+        """
+        Return the set of client names whose most recent Trust Tag is UNTRUSTED.
+
+        Used by server.py's _check_promote_to_excluded() as a clean public
+        accessor — avoids callers reaching into client_state internals.
+
+        Returns an empty set if no clients have been evaluated yet.
+        """
+        return {
+            name
+            for name, data in self.client_state.items()
+            if data.get("latest_trust", {}).get("tag") == "UNTRUSTED"
         }
 
 

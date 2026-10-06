@@ -255,44 +255,7 @@ class HospitalClient(fl.client.NumPyClient):
         print(f"[{CLIENT_NAME}] Federated Round {round_number}")
         print("=" * 60)
 
-        # ----------------------------------------------------------
-        # Display own trust status from previous round (server-injected)
-        # Each client sees ONLY its own status, not other hospitals'
-        # ----------------------------------------------------------
-        _trust_score = config.get("trust_score")
-        if _trust_score is not None:
-            _TAG_EMOJI = {"TRUSTED": "🟢", "SUSPICIOUS": "🟡", "UNTRUSTED": "🔴"}
-            _DEC_EMOJI = {"ACCEPT": "✅", "QUARANTINE": "🔶", "REJECT": "❌"}
-            _tag       = config.get("trust_tag", "TRUSTED")
-            _emoji     = _TAG_EMOJI.get(_tag, "")
-            print()
-            print("=" * 56)
-            _header = f"{CLIENT_NAME} - CLIENT TRUST STATUS (Round {round_number})"
-            print(f"  {_header}")
-            print("=" * 56)
-            # Original Phase-1 fields (preserved)
-            print(f"  {'Update Behaviour':<26}: {config.get('trust_update',      0.0):.1f} / 100")
-            print(f"  {'Training Behaviour':<26}: {config.get('trust_training',  0.0):.1f} / 100")
-            print(f"  {'Historical Trust':<26}: {config.get('trust_history',     0.0):.1f} / 100")
-            print(f"  {'Participation':<26}: {config.get('trust_reliability', 0.0):.1f} / 100")
-            print(f"  {'-' * 44}")
-            print(f"  {'Final Trust Score':<26}: {_trust_score:.1f} / 100")
-            print(f"  {'Client Tag':<26}: {_emoji} {_tag}")
-            # New fields (only display if present)
-            _anom = config.get("anomaly_score")
-            _pre  = config.get("pre_agg_decision")
-            _agg  = config.get("aggregation_decision")
-            if _anom is not None:
-                print(f"  {'-' * 44}")
-                print(f"  {'Anomaly Score':<26}: {_anom:.1f} / 100")
-                print(f"  {'Cosine Similarity':<26}: {config.get('cosine_similarity', 1.0):.4f}")
-                print(f"  {'Distribution Shift':<26}: {config.get('distribution_shift', 0.0):.4f}")
-            if _pre is not None:
-                print(f"  {'Pre-Agg Decision':<26}: {_DEC_EMOJI.get(_pre, '')} {_pre}")
-            if _agg is not None:
-                print(f"  {'Aggregation Decision':<26}: {_DEC_EMOJI.get(_agg, '')} {_agg}")
-            print("=" * 56)
-            print()
+
 
 
         # ============================================================

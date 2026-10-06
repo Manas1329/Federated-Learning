@@ -39,17 +39,17 @@
   "trust_data": {
     "Hospital_A": {
       "client_id": "Hospital_A",
-      "round": 12,
-      "update_score": 86.0,
-      "training_score": 90.0,
-      "historical_score": 89.0,
+      "round": 10,
+      "update_score": 90.0,
+      "training_score": 85.0,
+      "historical_score": 87.6,
       "reliability_score": 100.0,
-      "trust_score": 89.2,
+      "trust_score": 89.0,
       "tag": "TRUSTED",
-      "anomaly_score": 3.2,
-      "cosine_similarity": 0.9998,
+      "anomaly_score": 0.0,
+      "cosine_similarity": 0.9999,
       "distribution_shift": 0.0,
-      "l2_norm": 8.1005,
+      "l2_norm": 5.2273,
       "pre_agg_decision": "ACCEPT",
       "aggregation_decision": "ACCEPT",
       "normal_count": 805,
@@ -67,54 +67,44 @@
         ],
         [
           4,
-          88.0,
+          85.0,
           "TRUSTED"
         ],
         [
           5,
-          88.5,
-          "TRUSTED"
-        ],
-        [
-          6,
-          88.7,
-          "TRUSTED"
-        ],
-        [
-          7,
-          88.8,
+          89.8,
           "TRUSTED"
         ],
         [
           8,
-          90.5,
+          90.1,
           "TRUSTED"
         ],
         [
-          11,
-          90.7,
+          9,
+          88.9,
           "TRUSTED"
         ],
         [
-          12,
-          89.2,
+          10,
+          89.0,
           "TRUSTED"
         ]
       ]
     },
     "Hospital_B": {
       "client_id": "Hospital_B",
-      "round": 12,
+      "round": 10,
       "update_score": 90.0,
       "training_score": 85.0,
-      "historical_score": 89.5,
+      "historical_score": 88.8,
       "reliability_score": 100.0,
-      "trust_score": 89.4,
+      "trust_score": 89.3,
       "tag": "TRUSTED",
       "anomaly_score": 0.0,
       "cosine_similarity": 1.0,
       "distribution_shift": 0.0,
-      "l2_norm": 6.4494,
+      "l2_norm": 5.1468,
       "pre_agg_decision": "ACCEPT",
       "aggregation_decision": "ACCEPT",
       "normal_count": 205,
@@ -127,69 +117,59 @@
         ],
         [
           3,
-          86.3,
+          87.8,
           "TRUSTED"
         ],
         [
           4,
-          85.0,
+          86.6,
           "TRUSTED"
         ],
         [
           5,
-          89.8,
+          89.9,
           "TRUSTED"
         ],
         [
           6,
-          90.1,
+          90.3,
           "TRUSTED"
         ],
         [
           7,
-          90.4,
+          90.5,
           "TRUSTED"
         ],
         [
           8,
-          90.6,
+          89.2,
           "TRUSTED"
         ],
         [
           9,
-          89.3,
+          89.2,
           "TRUSTED"
         ],
         [
           10,
-          90.8,
-          "TRUSTED"
-        ],
-        [
-          11,
-          89.4,
-          "TRUSTED"
-        ],
-        [
-          12,
-          89.4,
+          89.3,
           "TRUSTED"
         ]
       ]
     },
     "Hospital_C": {
       "client_id": "Hospital_C",
-      "round": 12,
+      "round": 7,
       "update_score": 90.0,
       "training_score": 85.0,
-      "historical_score": 88.9,
+      "historical_score": 87.7,
       "reliability_score": 100.0,
-      "trust_score": 89.3,
+      "trust_score": 89.0,
       "tag": "TRUSTED",
       "anomaly_score": 0.0,
       "cosine_similarity": 1.0,
       "distribution_shift": 0.0,
-      "l2_norm": 5.382,
+      "l2_norm": 3.8002,
       "pre_agg_decision": "ACCEPT",
       "aggregation_decision": "ACCEPT",
       "normal_count": 71,
@@ -202,57 +182,32 @@
         ],
         [
           3,
-          86.3,
+          87.8,
           "TRUSTED"
         ],
         [
           4,
-          85.0,
+          88.1,
           "TRUSTED"
         ],
         [
           5,
-          89.8,
+          90.0,
           "TRUSTED"
         ],
         [
           6,
-          88.6,
-          "TRUSTED"
-        ],
-        [
-          7,
           90.3,
           "TRUSTED"
         ],
         [
-          8,
+          7,
           89.0,
-          "TRUSTED"
-        ],
-        [
-          9,
-          90.6,
-          "TRUSTED"
-        ],
-        [
-          10,
-          88.6,
-          "TRUSTED"
-        ],
-        [
-          11,
-          89.3,
-          "TRUSTED"
-        ],
-        [
-          12,
-          89.3,
           "TRUSTED"
         ]
       ]
     }
   },
-  "version": 11,
-  "last_updated": "11:23:41 PM"
+  "version": 9,
+  "last_updated": "11:45:57 AM"
 }
