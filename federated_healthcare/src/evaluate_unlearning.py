@@ -109,11 +109,13 @@ if __name__ == "__main__":
 
 
     print("\n" + "="*50)
-    print(" 3. EVALUATING DACU COMPENSATED MODEL")
+    print(" 3. EVALUATING DACM COMPENSATED MODEL")
     print("="*50)
-    acc3, prec3, rec3, f13, cm3 = evaluate_model("../models/dacu_compensated_model.pth", global_test_loaders)
+    import os
+    _dacm_model_path = "../models/dacm_compensated_model.pth" if os.path.exists("../models/dacm_compensated_model.pth") else "../models/dacu_compensated_model.pth"
+    acc3, prec3, rec3, f13, cm3 = evaluate_model(_dacm_model_path, global_test_loaders)
     print(f"Accuracy : {acc3:.4f}")
     print(f"Precision: {prec3:.4f}")
-    print(f"Recall   : {rec3:.4f}  <-- DACU VERIFICATION GATE")
+    print(f"Recall   : {rec3:.4f}  <-- DACM VERIFICATION GATE")
     print(f"F1 Score : {f13:.4f}")
     print(f"Confusion Matrix:\n{cm3}")

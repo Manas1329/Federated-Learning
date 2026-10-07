@@ -32,7 +32,7 @@ class ChestCNN(nn.Module):
 
 def train(net, trainloader, epochs, class_weight=1.0):
     # ============================================================
-    # DACU DYNAMIC LOSS INJECTION
+    # DACM DYNAMIC LOSS INJECTION
     # ============================================================
     if class_weight > 1.0:
         weights = torch.tensor([1.0, float(class_weight)], dtype=torch.float32).to(device)
@@ -74,7 +74,7 @@ def train_dp(
     class_weight=1.0
 ):
     # ============================================================
-    # DACU DYNAMIC LOSS INJECTION (FOR DP)
+    # DACM DYNAMIC LOSS INJECTION (FOR DP)
     # ============================================================
     if class_weight > 1.0:
         weights = torch.tensor([1.0, float(class_weight)], dtype=torch.float32).to(device)

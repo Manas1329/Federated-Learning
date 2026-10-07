@@ -85,11 +85,11 @@ round_start_times = {}
 
 class SaveModelStrategy(fl.server.strategy.FedAvg):
 
-    # ---> DACU: ADD INIT TO TRACK WEIGHTS <---
+    # ---> DACM: ADD INIT TO TRACK WEIGHTS <---
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Default weight is 1.0 (normal training)
-        self.dacu_recovery_weight = 1.0
+        self.dacm_recovery_weight = 1.0
 
     def configure_fit(
         self,
@@ -106,10 +106,10 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         print(f"Starting Federated Round {server_round}")
         print("=" * 60)
 
-        # ---> DACU: INJECT THE WEIGHT INTO THE CLIENT CONFIG <---
+        # ---> DACM: INJECT THE WEIGHT INTO THE CLIENT CONFIG <---
         config = {
             "server_round": server_round,
-            "pneumonia_weight": float(self.dacu_recovery_weight)
+            "pneumonia_weight": float(self.dacm_recovery_weight)
         }
 
         # Get normal Flower configuration
@@ -214,7 +214,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             round_time = 0
 
         # ==========================================================
-        # DACU: DISTRIBUTION AUDIT & DYNAMIC CALCULATION
+        # DACM: DISTRIBUTION AUDIT & DYNAMIC CALCULATION
         # ==========================================================
         total_normal = 0
         total_pneumonia = 0
@@ -228,18 +228,18 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         if total > 0:
             gamma = total_pneumonia / total
             print("\n" + "=" * 60)
-            print(f"[DACU Server Audit] Surviving Pneumonia Ratio: {gamma*100:.2f}%")
+            print(f"[DACM Server Audit] Surviving Pneumonia Ratio: {gamma*100:.2f}%")
             
             tau_safe = 0.50
             if gamma < tau_safe:
                 # Calculate compensation penalty
                 alpha = 3.0
-                self.dacu_recovery_weight = 1.0 + alpha * math.log(tau_safe / gamma)
-                print(f"[DACU ALERT] Minority class shortage detected (< {tau_safe*100:.0f}%)")
-                print(f"[DACU LOGIC] Broadcasting recovery weight for next round: {self.dacu_recovery_weight:.4f}")
+                self.dacm_recovery_weight = 1.0 + alpha * math.log(tau_safe / gamma)
+                print(f"[DACM ALERT] Minority class shortage detected (< {tau_safe*100:.0f}%)")
+                print(f"[DACM LOGIC] Broadcasting recovery weight for next round: {self.dacm_recovery_weight:.4f}")
             else:
-                self.dacu_recovery_weight = 1.0
-                print(f"[DACU LOGIC] Distribution safe. Standard training continues.")
+                self.dacm_recovery_weight = 1.0
+                print(f"[DACM LOGIC] Distribution safe. Standard training continues.")
             print("=" * 60)
 
         # ==========================================================

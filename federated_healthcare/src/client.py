@@ -254,7 +254,7 @@ class HospitalClient(fl.client.NumPyClient):
         epoch_times = []
         epsilon = None
         
-        # --- DACU: Read Recovery Weight from Server ---
+        # --- DACM: Read Recovery Weight from Server ---
         pneumonia_weight = float(config.get("pneumonia_weight", 1.0))
         if pneumonia_weight > 1.0:
             print("\n" + "!" * 60)
@@ -280,7 +280,7 @@ class HospitalClient(fl.client.NumPyClient):
                 privacy_engine=global_privacy_engine,
                 epochs=NUM_EPOCHS,
                 delta=DP_DELTA,
-                class_weight=pneumonia_weight  # Passed DACU weight
+                class_weight=pneumonia_weight  # Passed DACM weight
             )
 
             epoch_end = time.perf_counter()
@@ -301,7 +301,7 @@ class HospitalClient(fl.client.NumPyClient):
                     net,
                     trainloader,
                     epochs=1,
-                    class_weight=pneumonia_weight  # Passed DACU weight
+                    class_weight=pneumonia_weight  # Passed DACM weight
                 )
 
                 epoch_end = time.perf_counter()
@@ -317,17 +317,13 @@ class HospitalClient(fl.client.NumPyClient):
         total_training_time = (total_training_end - total_training_start)
         
         # ============================================================
-        # DACU: CALCULATE CLASS DISTRIBUTION COUNTS
+        # DACM: CALCULATE CLASS DISTRIBUTION COUNTS (METADATA ONLY)
         # ============================================================
-        normal_count = 0
-        pneumonia_count = 0
-        
-        # Calculate DP-compliant counts directly from the dataloader
-        for _, batch_labels in trainloader:
-            normal_count += int(torch.sum(batch_labels == 0).item())
-            pneumonia_count += int(torch.sum(batch_labels == 1).item())
-            
-        print(f"[{CLIENT_NAME}] Local Distribution - Normal: {normal_count}, Pneumonia: {pneumonia_count}")
+        from dacm import get_client_class_counts
+        counts_meta = get_client_class_counts(CLIENT_NAME, trainloader=trainloader)
+        normal_count = counts_meta["NORMAL"]
+        pneumonia_count = counts_meta["PNEUMONIA"]
+        print(f"[{CLIENT_NAME}] Local Distribution - Normal: {normal_count}, Pneumonia: {pneumonia_count}, Total: {counts_meta['TOTAL']}")
 
         # ============================================================
         # GET FP32 PARAMETERS
@@ -432,7 +428,7 @@ class HospitalClient(fl.client.NumPyClient):
                 "dp_noise_multiplier": float(DP_NOISE_MULTIPLIER) if USE_DP else 0.0,
                 "dp_max_grad_norm": float(DP_MAX_GRAD_NORM) if USE_DP else 0.0,
                 
-                # ---> DACU METADATA <---
+                # ---> DACM METADATA <---
                 "normal_count": float(normal_count),
                 "pneumonia_count": float(pneumonia_count)
             }
