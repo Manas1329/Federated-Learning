@@ -20,7 +20,7 @@ Environment variables (all optional):
     UNLEARN_LR             default 1e-4   (conservative — avoids collapse)
     UNLEARN_STEPS          default 2      (conservative)
     DACM_RECOVERY_EPOCHS   default 2
-    DACM_RECOVERY_LR       default 1e-3   (SGD, matches original run_dacu.py)
+    DACM_RECOVERY_LR       default 1e-3   (SGD, matches original run_dacm.py)
     DACM_TAU_SAFE          default 0.50
     DACM_ALPHA             default 3.0
     KNOWN_CLIENTS          default Hospital_A,Hospital_B,Hospital_C
@@ -45,13 +45,13 @@ from paths import MODELS_DIR
 # ------------------------------------------------------------------
 # Constants — all overridable via environment variables
 # ------------------------------------------------------------------
-KNOWN_CLIENTS: set = {
-    c.strip()
-    for c in os.environ.get(
-        "KNOWN_CLIENTS", "Hospital_A,Hospital_B,Hospital_C"
-    ).split(",")
-    if c.strip()
-}
+def _get_known_clients() -> set:
+    if "KNOWN_CLIENTS" in os.environ:
+        return {c.strip() for c in os.environ["KNOWN_CLIENTS"].split(",") if c.strip()}
+    from dacm import discover_clients
+    return set(discover_clients())
+
+KNOWN_CLIENTS: set = _get_known_clients()
 
 DACM_TAU_SAFE:    float = float(os.environ.get("DACM_TAU_SAFE", "0.50"))
 DACM_ALPHA:       float = float(os.environ.get("DACM_ALPHA", "3.0"))
@@ -83,17 +83,13 @@ def _print_banner(title: str):
     print("=" * 62)
 
 
-def _count_classes(trainloader) -> dict:
+def _count_classes(trainloader, client_id=None) -> dict:
     """
-    Count NORMAL (label=0) and PNEUMONIA (label=1) samples.
-    ImageFolder sorts folders alphabetically: NORMAL=0, PNEUMONIA=1.
+    Count NORMAL and PNEUMONIA samples dynamically.
+    Returns class-count metadata only (medical images remain local on client).
     """
-    normal_count = 0
-    pneumonia_count = 0
-    for _, labels in trainloader:
-        normal_count    += int(torch.sum(labels == 0).item())
-        pneumonia_count += int(torch.sum(labels == 1).item())
-    return {"NORMAL": normal_count, "PNEUMONIA": pneumonia_count}
+    from dacm import get_client_class_counts
+    return get_client_class_counts(client_id=client_id or "client", trainloader=trainloader)
 
 
 def _evaluate_model_object(model, test_loaders: list, device) -> tuple:
@@ -181,7 +177,7 @@ def _train_local_recovery(
     """
     Train a LOCAL COPY of the model for DACM recovery.
 
-    Uses SGD + weighted CrossEntropyLoss (matching original run_dacu.py).
+    Uses SGD + weighted CrossEntropyLoss (matching original run_dacm.py).
     Returns (trained_local_model, n_train_samples).
     """
     import torch.nn as nn
@@ -257,7 +253,7 @@ def _run_dacm_recovery(
     unlearned_model,
     surviving_trainloaders: dict,
     surviving_counts: dict,
-    dacu_weight_tensor: torch.Tensor,
+    dacm_weight_tensor: torch.Tensor,
     device,
     wc: float,
 ) -> "ChestCNN":
@@ -279,15 +275,15 @@ def _run_dacm_recovery(
     print(f"  Aggregation          : Weighted FedAvg by n_train_samples\n")
 
     # Verify weight order: index 0 = NORMAL, index 1 = PNEUMONIA
-    assert float(dacu_weight_tensor[0]) == 1.0, \
+    assert float(dacm_weight_tensor[0]) == 1.0, \
         "Weight[0] (NORMAL) must be 1.0 — check class ordering!"
-    print(f"[DACM] Weight tensor confirmed: [NORMAL={float(dacu_weight_tensor[0]):.4f}, "
-          f"PNEUMONIA={float(dacu_weight_tensor[1]):.4f}]")
+    print(f"[DACM] Weight tensor confirmed: [NORMAL={float(dacm_weight_tensor[0]):.4f}, "
+          f"PNEUMONIA={float(dacm_weight_tensor[1]):.4f}]")
 
     local_models_with_sizes = []
 
     for cid, trainloader in surviving_trainloaders.items():
-        print(f"\n[DACM] ── {cid} ──")
+        print(f"\n[DACM] -- {cid} --")
         print(f"  NORMAL={surviving_counts[cid]['NORMAL']}, "
               f"PNEUMONIA={surviving_counts[cid]['PNEUMONIA']}")
 
@@ -297,7 +293,7 @@ def _run_dacm_recovery(
         trained_local, n_samples = _train_local_recovery(
             local_model=local_model,
             trainloader=trainloader,
-            weight_tensor=dacu_weight_tensor,
+            weight_tensor=dacm_weight_tensor,
             epochs=RECOVERY_EPOCHS,
             lr=RECOVERY_LR,
             device=device,
@@ -337,7 +333,7 @@ def run_unlearn_workflow(
     from model import ChestCNN                                    # noqa
     from utils import load_partitions                             # noqa
     from unlearn_baseline import execute_baseline_unlearning      # noqa
-    from dacu import calculate_dacu_weights                       # noqa
+    from dacm import calculate_dacm_weights                       # noqa
 
     effective_suffix = suffix or SUFFIX
     if active_clients is None:
@@ -394,11 +390,12 @@ def run_unlearn_workflow(
     for cid in surviving_clients:
         try:
             tr, te, _ = load_partitions(client_id=cid)
-            counts = _count_classes(tr)
+            counts = _count_classes(tr, client_id=cid)
             surviving_counts[cid]      = counts
             surviving_trainloaders[cid] = tr
             surviving_testloaders.append(te)
-            print(f"  {cid} — NORMAL: {counts['NORMAL']}, PNEUMONIA: {counts['PNEUMONIA']}")
+            print(f"  [Client Metadata] {cid:<12} -> NORMAL: {counts['NORMAL']:<5} "
+                  f"PNEUMONIA: {counts['PNEUMONIA']:<5} TOTAL: {counts['TOTAL']:<5} (images remain local)")
         except Exception as exc:
             print(f"[WARNING] Could not load {cid}: {exc}. Skipping.")
 
@@ -525,12 +522,12 @@ def run_unlearn_workflow(
     print(f"[DACM] tau_safe        = {DACM_TAU_SAFE}")
 
     # Call existing DACM formula (unchanged)
-    dacu_weight_tensor = calculate_dacu_weights(
+    dacm_weight_tensor = calculate_dacm_weights(
         surviving_counts,
         tau_safe=DACM_TAU_SAFE,
         alpha=DACM_ALPHA,
     )
-    wc = float(dacu_weight_tensor[1])
+    wc = float(dacm_weight_tensor[1])
 
     # ------------------------------------------------------------------
     # STEP 4 — Federated Recovery (only if shortage detected)
@@ -543,7 +540,7 @@ def run_unlearn_workflow(
             unlearned_model=unlearned_model,
             surviving_trainloaders=surviving_trainloaders,
             surviving_counts=surviving_counts,
-            dacu_weight_tensor=dacu_weight_tensor,
+            dacm_weight_tensor=dacm_weight_tensor,
             device=device,
             wc=wc,
         )

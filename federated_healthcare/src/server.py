@@ -319,10 +319,11 @@ def _check_promote_to_excluded(
 
 class SaveModelStrategy(fl.server.strategy.FedAvg):
 
-    # ---> DACU: ADD INIT TO TRACK WEIGHTS <---
+    # ---> DACM: ADD INIT TO TRACK WEIGHTS <---
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Default weight is 1.0 (normal training)
+        self.dacm_recovery_weight = 1.0
         self.dacu_recovery_weight = 1.0
         # Accumulates every client name that received a QUARANTINE decision
         # across any round during training. Populated in aggregate_fit.
@@ -425,9 +426,9 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         base_config = {"server_round": server_round}
 
-        # ---> DACU: INJECT THE WEIGHT INTO THE CLIENT CONFIG <---
-        if hasattr(self, 'dacu_recovery_weight'):
-            base_config["pneumonia_weight"] = float(self.dacu_recovery_weight)
+        # ---> DACM: INJECT THE WEIGHT INTO THE CLIENT CONFIG <---
+        dacm_weight = getattr(self, 'dacm_recovery_weight', getattr(self, 'dacu_recovery_weight', 1.0))
+        base_config["pneumonia_weight"] = float(dacm_weight)
 
         available_clients = client_manager.num_available()
         sample_size = min(self.min_fit_clients, available_clients)
@@ -723,7 +724,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             round_time = 0
 
         # ==========================================================
-        # DACU: DISTRIBUTION AUDIT & DYNAMIC CALCULATION
+        # DACM: DISTRIBUTION AUDIT & DYNAMIC CALCULATION
         # ==========================================================
         total_normal = 0
         total_pneumonia = 0
@@ -737,18 +738,18 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         if total > 0:
             gamma = total_pneumonia / total
             print("\n" + "=" * 60)
-            print(f"[DACU Server Audit] Surviving Pneumonia Ratio: {gamma*100:.2f}%")
+            print(f"[DACM Server Audit] Surviving Pneumonia Ratio: {gamma*100:.2f}%")
             
             tau_safe = 0.50
             if gamma < tau_safe:
                 # Calculate compensation penalty
                 alpha = 3.0
-                self.dacu_recovery_weight = 1.0 + alpha * math.log(tau_safe / gamma)
-                print(f"[DACU ALERT] Minority class shortage detected (< {tau_safe*100:.0f}%)")
-                print(f"[DACU LOGIC] Broadcasting recovery weight for next round: {self.dacu_recovery_weight:.4f}")
+                self.dacm_recovery_weight = 1.0 + alpha * math.log(tau_safe / gamma)
+                print(f"[DACM ALERT] Minority class shortage detected (< {tau_safe*100:.0f}%)")
+                print(f"[DACM LOGIC] Broadcasting recovery weight for next round: {self.dacm_recovery_weight:.4f}")
             else:
-                self.dacu_recovery_weight = 1.0
-                print(f"[DACU LOGIC] Distribution safe. Standard training continues.")
+                self.dacm_recovery_weight = 1.0
+                print(f"[DACM LOGIC] Distribution safe. Standard training continues.")
             print("=" * 60)
 
         # ==========================================================

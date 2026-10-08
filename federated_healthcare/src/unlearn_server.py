@@ -44,13 +44,13 @@ if _env_path.exists():
 # -----------------------------------------------------------------------
 UNLEARN_PORT: int = int(os.environ.get("UNLEARN_PORT", "8765"))
 
-KNOWN_CLIENTS: set = {
-    c.strip()
-    for c in os.environ.get(
-        "KNOWN_CLIENTS", "Hospital_A,Hospital_B,Hospital_C"
-    ).split(",")
-    if c.strip()
-}
+def _get_known_clients() -> set:
+    if "KNOWN_CLIENTS" in os.environ:
+        return {c.strip() for c in os.environ["KNOWN_CLIENTS"].split(",") if c.strip()}
+    from dacm import discover_clients
+    return set(discover_clients())
+
+KNOWN_CLIENTS: set = _get_known_clients()
 
 # Active client registry — starts as all known clients; updated after each
 # successful unlearning so repeated requests are correctly rejected.
