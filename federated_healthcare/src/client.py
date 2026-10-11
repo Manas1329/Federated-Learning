@@ -391,7 +391,14 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # INT8 QUANTIZATION
         # ============================================================
-        if USE_QUANTIZATION:
+        # Prefer server's round config, falling back to local USE_QUANTIZATION
+        client_use_quant = config.get("use_quantization", USE_QUANTIZATION)
+        if isinstance(client_use_quant, str):
+            client_use_quant = client_use_quant.lower() in ("1", "true")
+        else:
+            client_use_quant = bool(client_use_quant)
+
+        if client_use_quant:
             (
                 quantized_parameters,
                 quantized_payload_bytes,
@@ -458,7 +465,7 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         returned_parameters = (
             quantized_parameters
-            if USE_QUANTIZATION
+            if client_use_quant
             else fp32_parameters
         )
 
@@ -473,6 +480,7 @@ class HospitalClient(fl.client.NumPyClient):
                 "training_time": float(total_training_time),
                 "client_name": str(CLIENT_NAME),
                 "training_duration": float(total_training_time),
+                "is_quantized": bool(client_use_quant),
 
                 # FP32 communication
                 "payload_size_mb": float(original_payload_mb),
