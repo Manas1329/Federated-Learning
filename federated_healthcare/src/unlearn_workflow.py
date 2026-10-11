@@ -256,12 +256,14 @@ def _run_dacm_recovery(
     dacm_weight_tensor: torch.Tensor,
     device,
     wc: float,
+    concurrent: bool = True,
+    max_workers: int = None,
 ) -> "ChestCNN":
     """
     Proper federated DACM recovery:
 
     1. Deep-copy unlearned_model for EACH surviving client.
-    2. Each client trains its own LOCAL copy independently.
+    2. Each client trains its own LOCAL copy independently and concurrently.
     3. Server aggregates with weighted FedAvg (n_samples weighting).
 
     This prevents sequential training bias where the last client dominates.
@@ -280,26 +282,24 @@ def _run_dacm_recovery(
     print(f"[DACM] Weight tensor confirmed: [NORMAL={float(dacm_weight_tensor[0]):.4f}, "
           f"PNEUMONIA={float(dacm_weight_tensor[1]):.4f}]")
 
-    local_models_with_sizes = []
+    from dacm import train_concurrent_recovery
 
-    for cid, trainloader in surviving_trainloaders.items():
-        print(f"\n[DACM] -- {cid} --")
-        print(f"  NORMAL={surviving_counts[cid]['NORMAL']}, "
+    client_ids = sorted(surviving_trainloaders.keys())
+    for cid in client_ids:
+        print(f"  [Client Info] {cid}: NORMAL={surviving_counts[cid]['NORMAL']}, "
               f"PNEUMONIA={surviving_counts[cid]['PNEUMONIA']}")
 
-        # Independent local copy — not the shared model
-        local_model = _clone_model(unlearned_model)
-
-        trained_local, n_samples = _train_local_recovery(
-            local_model=local_model,
-            trainloader=trainloader,
-            weight_tensor=dacm_weight_tensor,
-            epochs=RECOVERY_EPOCHS,
-            lr=RECOVERY_LR,
-            device=device,
-            client_id=cid,
-        )
-        local_models_with_sizes.append((trained_local, n_samples))
+    local_models_with_sizes = train_concurrent_recovery(
+        unlearned_model=unlearned_model,
+        surviving_loaders=surviving_trainloaders,
+        dacm_weights=dacm_weight_tensor,
+        epochs=RECOVERY_EPOCHS,
+        lr=RECOVERY_LR,
+        device=device,
+        client_ids=client_ids,
+        concurrent=concurrent,
+        max_workers=max_workers,
+    )
 
     print(f"\n[DACM] FedAvg aggregating {len(local_models_with_sizes)} local models ...")
     aggregated_model = _fedavg_aggregate(local_models_with_sizes, unlearned_model, device)
@@ -532,18 +532,24 @@ def run_unlearn_workflow(
     # ------------------------------------------------------------------
     # STEP 4 — Federated Recovery (only if shortage detected)
     # ------------------------------------------------------------------
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    force_cpu = os.environ.get("FORCE_CPU", "0") == "1"
+    device = torch.device("cpu" if force_cpu else ("cuda" if torch.cuda.is_available() else "cpu"))
     unlearned_model.to(device)
 
     if gamma_c < DACM_TAU_SAFE:
-        recovered_model = _run_dacm_recovery(
-            unlearned_model=unlearned_model,
-            surviving_trainloaders=surviving_trainloaders,
-            surviving_counts=surviving_counts,
-            dacm_weight_tensor=dacm_weight_tensor,
-            device=device,
-            wc=wc,
-        )
+        try:
+            recovered_model = _run_dacm_recovery(
+                unlearned_model=unlearned_model,
+                surviving_trainloaders=surviving_trainloaders,
+                surviving_counts=surviving_counts,
+                dacm_weight_tensor=dacm_weight_tensor,
+                device=device,
+                wc=wc,
+            )
+        except Exception as exc:
+            print(f"\n[ERROR] Federated recovery training failed: {exc}")
+            import traceback; traceback.print_exc()
+            return False
     else:
         print(f"\n[DACM] No recovery required — gamma_c ({gamma_c:.4f}) >= tau_safe ({DACM_TAU_SAFE}).")
         recovered_model = unlearned_model

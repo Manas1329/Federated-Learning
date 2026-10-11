@@ -19,9 +19,15 @@ import copy
 import argparse
 from pathlib import Path
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch
 import torch.nn as nn
 import numpy as np
+
+
+class DACMRecoveryError(RuntimeError):
+    """Raised when DACM local recovery training or aggregation fails."""
+    pass
 
 # Ensure src is importable
 SRC_DIR = Path(__file__).resolve().parent
@@ -203,7 +209,8 @@ def train_local_recovery(
         (trained_local_model, n_samples)
     """
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        force_cpu = os.environ.get("FORCE_CPU", "0") == "1"
+        device = torch.device("cpu" if force_cpu else ("cuda" if torch.cuda.is_available() else "cpu"))
 
     local_model.to(device)
     local_model.train()
@@ -232,6 +239,115 @@ def train_local_recovery(
               f"avg_loss={avg_loss:.4f} | samples={n_samples}")
 
     return local_model, n_samples
+
+
+def train_concurrent_recovery(
+    unlearned_model: nn.Module,
+    surviving_loaders: dict,
+    dacm_weights: torch.Tensor,
+    epochs: int = 2,
+    lr: float = 1e-3,
+    device = None,
+    client_ids: list = None,
+    concurrent: bool = True,
+    max_workers: int = None,
+) -> list[tuple[nn.Module, int]]:
+    """
+    Train local recovery models across surviving clients concurrently or sequentially.
+
+    Guarantees:
+    1. Each worker starts from an independent copy (deepcopy) of unlearned_model.
+    2. No mutable model state is shared across workers.
+    3. Each worker trains on its client-specific DataLoader only.
+    4. Explicit error handling: worker exceptions abort aggregation and raise DACMRecoveryError.
+    5. Returns (model, n_samples) tuples ordered consistently by canonical client_ids.
+    """
+    if device is None:
+        force_cpu = os.environ.get("FORCE_CPU", "0") == "1"
+        device = torch.device("cpu" if force_cpu else ("cuda" if torch.cuda.is_available() else "cpu"))
+
+    if client_ids is None:
+        client_ids = sorted(surviving_loaders.keys())
+
+    if not client_ids:
+        raise DACMRecoveryError("No surviving clients provided for recovery training.")
+
+    missing_loaders = [cid for cid in client_ids if cid not in surviving_loaders]
+    if missing_loaders:
+        raise DACMRecoveryError(f"Missing trainloaders for surviving clients: {missing_loaders}")
+
+    def _train_single_client(cid: str) -> tuple[str, nn.Module, int]:
+        # Guarantee: Independent model copy per worker
+        local_clone = copy.deepcopy(unlearned_model)
+        loader = surviving_loaders[cid]
+        trained_local, n_samples = train_local_recovery(
+            local_model=local_clone,
+            trainloader=loader,
+            dacm_weights=dacm_weights,
+            epochs=epochs,
+            lr=lr,
+            device=device,
+            client_id=cid,
+        )
+        return cid, trained_local, n_samples
+
+    # Check environment variable for max workers if not explicitly passed
+    env_max = os.environ.get("DACM_MAX_WORKERS")
+    if max_workers is None and env_max:
+        try:
+            max_workers = int(env_max)
+        except ValueError:
+            pass
+
+    use_concurrent = concurrent and len(client_ids) > 1 and (max_workers is None or max_workers > 1)
+
+    if not use_concurrent:
+        print(f"\n[DACM Recovery] Executing local recovery sequentially for {len(client_ids)} client(s)...")
+        results = {}
+        for cid in client_ids:
+            try:
+                _, trained_local, n_samples = _train_single_client(cid)
+                results[cid] = (trained_local, n_samples)
+            except Exception as exc:
+                err_msg = f"Recovery training failed for client '{cid}': {exc}"
+                print(f"[DACM ERROR] {err_msg}")
+                raise DACMRecoveryError(err_msg) from exc
+        return [results[cid] for cid in client_ids]
+
+    workers = min(len(client_ids), max_workers) if max_workers else len(client_ids)
+    print(f"\n[DACM Recovery] Executing concurrent local recovery for {len(client_ids)} clients "
+          f"(max_workers={workers}, device={device})...")
+
+    results = {}
+    failures = {}
+
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dacm_worker") as executor:
+        future_to_cid = {
+            executor.submit(_train_single_client, cid): cid
+            for cid in client_ids
+        }
+        for future in as_completed(future_to_cid):
+            cid = future_to_cid[future]
+            try:
+                _, trained_local, n_samples = future.result()
+                results[cid] = (trained_local, n_samples)
+            except Exception as exc:
+                failures[cid] = exc
+                print(f"[DACM ERROR] Worker failed for surviving client '{cid}': {exc}")
+
+    if failures:
+        err_msg = (
+            f"[DACM FATAL] {len(failures)} recovery worker(s) failed during training: "
+            + ", ".join(f"{c}: {repr(e)}" for c, e in failures.items())
+            + "\n[DACM FATAL] Safe policy enforced: Incomplete or corrupted updates will NOT be aggregated."
+        )
+        print(f"\n{err_msg}")
+        raise DACMRecoveryError(err_msg)
+
+    # Return results strictly ordered by canonical client_ids for deterministic FedAvg
+    return [results[cid] for cid in client_ids]
+
+
 
 
 # ----------------------------------------------------------------------
@@ -299,6 +415,8 @@ def execute_dacm_recovery(
     lr: float = 1e-3,
     device = None,
     save_path: str = None,
+    concurrent: bool = True,
+    max_workers: int = None,
 ) -> tuple[nn.Module, torch.Tensor, dict, list]:
     """
     Execute fully federated and dynamic DACM recovery.
@@ -307,16 +425,18 @@ def execute_dacm_recovery(
         1. Dynamically identify surviving clients (server exclusion state).
         2. Obtain local class count metadata from each client (no raw images).
         3. Server audits distribution and calculates DACM weight.
-        4. Each surviving client starts from the SAME starting model and trains
-           independently with nn.CrossEntropyLoss(weight=dacm_weights).
-        5. Server aggregates local updates with sample-weighted FedAvg.
-        6. Recovered global model is saved.
+        4. Each surviving client starts from an independent copy of the SAME starting model
+           and trains with nn.CrossEntropyLoss(weight=dacm_weights).
+        5. Training is executed concurrently (or sequentially if disabled) across surviving clients.
+        6. Server aggregates local updates with sample-weighted FedAvg.
+        7. Recovered global model is saved.
         
     Returns:
         (recovered_model, dacm_weights, surviving_counts, surviving_clients)
     """
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        force_cpu = os.environ.get("FORCE_CPU", "0") == "1"
+        device = torch.device("cpu" if force_cpu else ("cuda" if torch.cuda.is_available() else "cpu"))
 
     # 1. Resolve starting / unlearned model
     if unlearned_model is None:
@@ -363,6 +483,7 @@ def execute_dacm_recovery(
     print(f"[DACM] Target Device       : {device}")
     print(f"[DACM] Recovery Epochs     : {epochs} (independent per client)")
     print(f"[DACM] Learning Rate       : {lr} (SGD)")
+    print(f"[DACM] Execution Mode      : {'Concurrent' if concurrent else 'Sequential'}")
 
     # 3. Dynamic metadata acquisition from surviving clients (NO RAW IMAGES TO SERVER)
     from utils import load_partitions
@@ -382,23 +503,19 @@ def execute_dacm_recovery(
     # 4. Server DACM distribution audit
     dacm_weights = calculate_dacm_weights(surviving_counts, tau_safe=tau_safe, alpha=alpha)
 
-    # 5. Independent parallel/local recovery training (NO sequential training)
+    # 5. Independent parallel/local recovery training (NO sequential training bias)
     print("\n[DACM] Launching independent local recovery on surviving clients...")
-    local_models_with_sizes = []
-
-    for cid in surviving_clients:
-        print(f"\n[DACM] -- Client: {cid} --")
-        local_clone = copy.deepcopy(unlearned_model)
-        trained_local, n_samples = train_local_recovery(
-            local_model=local_clone,
-            trainloader=surviving_loaders[cid],
-            dacm_weights=dacm_weights,
-            epochs=epochs,
-            lr=lr,
-            device=device,
-            client_id=cid,
-        )
-        local_models_with_sizes.append((trained_local, n_samples))
+    local_models_with_sizes = train_concurrent_recovery(
+        unlearned_model=unlearned_model,
+        surviving_loaders=surviving_loaders,
+        dacm_weights=dacm_weights,
+        epochs=epochs,
+        lr=lr,
+        device=device,
+        client_ids=surviving_clients,
+        concurrent=concurrent,
+        max_workers=max_workers,
+    )
 
     # 6. Server FedAvg aggregation
     print(f"\n[DACM] FedAvg aggregating updates from {len(local_models_with_sizes)} surviving clients...")
@@ -482,6 +599,24 @@ if __name__ == "__main__":
         default=None,
         help="Output checkpoint file path for the recovered model.",
     )
+    parser.add_argument(
+        "--concurrent",
+        action="store_true",
+        default=True,
+        help="Run local recovery training concurrently (default: True).",
+    )
+    parser.add_argument(
+        "--sequential",
+        dest="concurrent",
+        action="store_false",
+        help="Force sequential local recovery training.",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=None,
+        help="Max concurrent worker threads (default: len(surviving_clients)).",
+    )
 
     args = parser.parse_args()
 
@@ -493,4 +628,6 @@ if __name__ == "__main__":
         epochs=args.epochs,
         lr=args.lr,
         save_path=args.save_path,
+        concurrent=args.concurrent,
+        max_workers=args.max_workers,
     )

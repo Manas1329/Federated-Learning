@@ -63,6 +63,24 @@ if __name__ == "__main__":
         default=None,
         help="Path where recovered model should be saved.",
     )
+    parser.add_argument(
+        "--concurrent",
+        action="store_true",
+        default=True,
+        help="Run local recovery training concurrently (default: True).",
+    )
+    parser.add_argument(
+        "--sequential",
+        dest="concurrent",
+        action="store_false",
+        help="Force sequential local recovery training.",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=None,
+        help="Max concurrent worker threads (default: len(surviving_clients)).",
+    )
 
     args = parser.parse_args()
 
@@ -74,4 +92,6 @@ if __name__ == "__main__":
         epochs=args.epochs,
         lr=args.lr,
         save_path=args.save_path,
+        concurrent=args.concurrent,
+        max_workers=args.max_workers,
     )
