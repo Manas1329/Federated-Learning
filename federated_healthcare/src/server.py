@@ -1,6 +1,7 @@
 import flwr as fl
 import os
 import time
+import numpy as np
 import pandas as pd
 import torch
 import math
@@ -424,7 +425,10 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             except Exception:
                 pass
 
-        base_config = {"server_round": server_round}
+        base_config = {
+            "server_round": server_round,
+            "use_quantization": bool(USE_QUANTIZATION),
+        }
 
         # ---> DACM: INJECT THE WEIGHT INTO THE CLIENT CONFIG <---
         dacm_weight = getattr(self, 'dacm_recovery_weight', getattr(self, 'dacu_recovery_weight', 1.0))
@@ -526,30 +530,41 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         aggregation_start = time.perf_counter()
 
         # ==========================================================
-        # DEQUANTIZE CLIENT PARAMETERS
+        # DEQUANTIZE / NORMALIZE CLIENT PARAMETERS
         # ==========================================================
+        # Auto-detect whether incoming updates are INT8-quantized or FP32.
+        # This prevents FedAvg shape mismatch errors (e.g. (32,1,3,3) vs (5,))
+        # even if clients and server have mixed quantization settings.
         dequantized_results = []
 
-        if USE_QUANTIZATION:
-            for client_proxy, fit_res in results:
-                try:
-                    # Convert Flower Parameters -> NumPy arrays
-                    quantized_parameters = parameters_to_ndarrays(fit_res.parameters)
+        for client_proxy, fit_res in results:
+            try:
+                raw_params = parameters_to_ndarrays(fit_res.parameters)
+                client_metric_quant = fit_res.metrics.get("is_quantized", None)
 
-                    # INT8 -> FP32
-                    fp32_parameters = dequantize_parameters(quantized_parameters)
+                # Determine if this client update is quantized
+                if client_metric_quant is True:
+                    is_quant = True
+                elif client_metric_quant is False:
+                    is_quant = False
+                else:
+                    # Auto-detect: quantized models alternate (metadata: float32, q: int8)
+                    # For ChestCNN (8 layers), quantized has 16 arrays and raw_params[1].dtype == int8.
+                    is_quant = (
+                        len(raw_params) > 0
+                        and len(raw_params) % 2 == 0
+                        and raw_params[1].dtype == np.int8
+                    )
 
-                    # Convert FP32 NumPy arrays back to Flower Parameters
-                    fp32_parameters_flower = ndarrays_to_parameters(fp32_parameters)
-
-                    # Replace the INT8 parameters with FP32 parameters
-                    fit_res.parameters = fp32_parameters_flower
-
+                if is_quant:
+                    fp32_parameters = dequantize_parameters(raw_params)
+                    fit_res.parameters = ndarrays_to_parameters(fp32_parameters)
                     dequantized_results.append((client_proxy, fit_res))
-                except Exception as e:
-                    print(f"Error dequantizing client update: {e}")
-        else:
-            dequantized_results = results
+                else:
+                    # Already FP32
+                    dequantized_results.append((client_proxy, fit_res))
+            except Exception as e:
+                print(f"[Server] Error processing/dequantizing update from client {client_proxy.cid}: {e}")
 
         # ==========================================================
         # TRUST MODULE: record update behaviour per client (Stage 1)
