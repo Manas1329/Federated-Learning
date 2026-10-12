@@ -161,6 +161,7 @@ import flwr as fl
 from federated_healthcare.src.server import (
     SaveModelStrategy,
     evaluate_metrics_aggregation_fn,
+    _load_initial_parameters,
     RESULTS_DIR,
     MODEL_DIR,
     MODEL_PATH,
@@ -172,6 +173,7 @@ from federated_healthcare.src.dropout_handler import AdaptiveServer
 # Build strategy (mirrors existing server.py __main__)
 # ------------------------------------------------------------------
 
+_init_params = _load_initial_parameters()
 strategy = SaveModelStrategy(
     fraction_fit=1.0,
     fraction_evaluate=1.0,
@@ -179,6 +181,7 @@ strategy = SaveModelStrategy(
     min_evaluate_clients=MIN_CLIENTS,
     min_available_clients=MIN_CLIENTS,
     evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
+    initial_parameters=_init_params,
 )
 
 client_manager = fl.server.SimpleClientManager()

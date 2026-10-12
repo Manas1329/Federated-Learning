@@ -74,6 +74,33 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
+# --------------------------------------------------
+# Optional warm-start: load initial model from checkpoint
+# Set INIT_MODEL_PATH=/path/to/checkpoint.pth to warm-start
+# the federation from a pre-existing model (e.g., post-unlearn).
+# --------------------------------------------------
+def _load_initial_parameters():
+    """Return Flower Parameters from INIT_MODEL_PATH if set, else None."""
+    init_path = os.environ.get("INIT_MODEL_PATH", "").strip()
+    if not init_path:
+        return None
+    from pathlib import Path as _Path
+    p = _Path(init_path)
+    if not p.exists():
+        print(f"[INIT_MODEL] WARNING: INIT_MODEL_PATH not found: {p}. Starting from random weights.")
+        return None
+    try:
+        _device = torch.device("cpu")  # always load to CPU for parameter broadcast
+        _m = ChestCNN().to(_device)
+        _m.load_state_dict(torch.load(str(p), map_location=_device))
+        _ndarrays = [v.cpu().numpy() for v in _m.state_dict().values()]
+        _params = ndarrays_to_parameters(_ndarrays)
+        print(f"[INIT_MODEL] Warm-starting from: {p}")
+        return _params
+    except Exception as _e:
+        print(f"[INIT_MODEL] WARNING: Failed to load INIT_MODEL_PATH ({_e}). Starting from random weights.")
+        return None
+
 # Set of all known federation participants — used by the auto-unlearn trigger.
 # Overridable via environment variable: KNOWN_CLIENTS=Hospital_A,Hospital_B,Hospital_C
 KNOWN_CLIENTS: set = {
@@ -972,6 +999,7 @@ if __name__ == "__main__":
     TARGET_CLIENTS = int(os.environ.get("TARGET_CLIENTS", "3"))
     MIN_CLIENTS = max(2, math.ceil(0.6 * TARGET_CLIENTS))
 
+    _init_params = _load_initial_parameters()
     strategy = SaveModelStrategy(
         fraction_fit=1.0,
         fraction_evaluate=1.0,
@@ -981,6 +1009,7 @@ if __name__ == "__main__":
         evaluate_metrics_aggregation_fn=(
             evaluate_metrics_aggregation_fn
         ),
+        initial_parameters=_init_params,
     )
 
     client_manager = fl.server.SimpleClientManager()
