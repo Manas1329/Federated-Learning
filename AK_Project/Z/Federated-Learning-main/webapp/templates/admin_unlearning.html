@@ -1,0 +1,50 @@
+{% extends "_admin_base.html" %}
+{% block title %}Federated Unlearning{% endblock %}
+{% block page_name %}Federated Unlearning{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Unlearning Request Management</h1>
+    <p>Track and manage right-to-be-forgotten (RTBF) pipeline requests across federated client hospitals.</p>
+</div>
+<div class="card">
+    <div class="card-header">
+        <h3><span class="card-icon">🗑️</span> All Unlearning Requests</h3>
+        <span class="view-all">Auto-refresh every 30s</span>
+    </div>
+    <div id="ulContainer" class="grid grid-3"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadUL() {
+    const requests = await apiGet('/api/admin/unlearning-requests?limit=50');
+    const container = document.getElementById('ulContainer');
+    if (requests.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">✓</div><h4>No unlearning requests</h4></div>';
+        return;
+    }
+    const steps = ['Client Identified','Historical Contribution Located','Contributions Removed','Model Recovery','Verification Pending'];
+    container.innerHTML = requests.map(u => `
+        <div class="card" style="padding:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <h4 style="font-size:14px;">🆔 ${u.request_id}</h4>
+                <span class="badge ${u.status === 'Resolved' ? 'badge-success' : u.status === 'Pending' ? 'badge-warning' : 'badge-info'}">${u.status}</span>
+            </div>
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">Hospital: <strong>${u.hospital_name}</strong> · Submitted: ${formatDateTime(u.submitted_at)}</p>
+            <p style="font-size:13px;margin-bottom:12px;"><strong>Reason:</strong> ${u.reason}</p>
+            <div class="progress-bar" style="margin-bottom:8px;">
+                <div class="bar-fill progress-amber" style="width:${(u.current_step/u.total_steps)*100}%;"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Step ${u.current_step} of ${u.total_steps} (${u.progress_percent.toFixed(0)}%)</div>
+            <div class="ul-steps">
+                ${steps.map((s,i)=>`<div class="ul-step ${i < u.current_step-1 ? 'done' : i===u.current_step-1 ? 'active':''}">
+                    <span class="ul-step-num">${i<u.current_step-1?'✓':i+1}</span><span style="${i===u.current_step-1?'font-weight:700;':''}">${s}</span>
+                </div>`).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+loadUL();
+setInterval(loadUL, 30000);
+</script>
+{% endblock %}

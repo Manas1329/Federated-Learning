@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Dashboard - Federated Healthcare AI</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">🏥</div>
+            <div>
+                <h1>Federated Healthcare Learning</h1>
+                <p>Hospital Client Interface</p>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">Main</div>
+            <a href="/hospital/dashboard" class="nav-item active">
+                <span class="nav-icon">🏠</span><span>Dashboard</span>
+            </a>
+            <a href="/hospital/training" class="nav-item">
+                <span class="nav-icon">⚙️</span><span>Local Training</span>
+            </a>
+            <a href="/hospital/performance" class="nav-item">
+                <span class="nav-icon">📊</span><span>Model Performance</span>
+            </a>
+            <a href="/hospital/dashboard" class="nav-item">
+                <span class="nav-icon">📡</span><span>Communication</span>
+            </a>
+            <a href="/hospital/privacy" class="nav-item">
+                <span class="nav-icon">🛡️</span><span>Privacy &amp; Security</span>
+            </a>
+            <a href="/hospital/unlearning" class="nav-item">
+                <span class="nav-icon">🗑️</span><span>Unlearning Request</span>
+            </a>
+            <a href="/hospital/activity" class="nav-item">
+                <span class="nav-icon">🕐</span><span>Activity History</span>
+            </a>
+            <a href="/hospital/settings" class="nav-item">
+                <span class="nav-icon">⚙️</span><span>Settings</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="status-line"><span class="status-dot"></span>Secure Connection</div>
+            <div style="opacity:0.5;">Version 2.1.0</div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <h2 id="hospitalName">City Hospital</h2>
+                    <span class="badge badge-primary" style="font-size:10px;">▼</span>
+                </div>
+                <div class="breadcrumb">Federated Healthcare Node</div>
+            </div>
+            <div class="topbar-right">
+                <div class="topbar-info">
+                    <span class="info-icon">📅</span>
+                    <span id="currentDateTime"></span>
+                    <span style="margin:0 6px;">|</span>
+                    <span id="currentTime"></span>
+                </div>
+                <div class="user-dropdown" onclick="logout()">
+                    <div class="user-avatar">{{ user.full_name[:1] if user else 'D' }}</div>
+                    <div class="user-info">
+                        <div class="user-name" id="doctorName">{{ user.full_name if user else 'Dr. Smith' }}</div>
+                        <div class="user-role">▼</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="content-area">
+            <div class="page-header">
+                <h1>Welcome, <span id="welcomeName">{{ user.full_name.split(' ')[0] if user else 'Dr. Smith' }}</span></h1>
+                <p>Here is the status of your local training and federated learning activities.</p>
+            </div>
+
+            <div class="grid grid-6" style="margin-bottom:20px;">
+                <div class="stat-card">
+                    <div class="stat-bg-icon">🎯</div>
+                    <div class="stat-icon stat-icon-green">✅</div>
+                    <div class="stat-label">Local Accuracy</div>
+                    <div class="stat-value" id="localAccuracy">92.4%</div>
+                    <div class="stat-sub"><span class="stat-change up" id="accChange">▲ +1.2%</span> vs. last round</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-bg-icon">⚙️</div>
+                    <div class="stat-icon stat-icon-blue">🏃</div>
+                    <div class="stat-label">Training Status</div>
+                    <div class="stat-value" style="font-size:22px;"><span id="trainingStatusDot" class="status-dot-lg dot-green"></span> <span id="trainingStatus">Completed</span></div>
+                    <div class="stat-sub" id="trainingLastUpdate">Last updated: 10:32 AM</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-bg-icon">🔄</div>
+                    <div class="stat-icon stat-icon-purple">🗓️</div>
+                    <div class="stat-label">Global Round</div>
+                    <div class="stat-value"><span id="currRound">18</span> / <span style="font-size:18px;opacity:0.6;">20</span></div>
+                    <div class="stat-sub" id="nextRoundIn">Next round in: 12 min</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-bg-icon">🔐</div>
+                    <div class="stat-icon stat-icon-green">🛡️</div>
+                    <div class="stat-label">Privacy Status</div>
+                    <div class="stat-value" style="font-size:20px;">DP <span id="dpEnabled">Enabled</span></div>
+                    <div class="stat-sub">ε = <span id="dpEpsilon">1.0</span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-bg-icon">📡</div>
+                    <div class="stat-icon stat-icon-amber">📶</div>
+                    <div class="stat-label">Communication</div>
+                    <div class="stat-value" id="dataSent">2.4 MB <span style="font-size:13px;opacity:0.7;font-weight:500;">Sent</span></div>
+                    <div class="stat-sub">Quantized + DP</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-bg-icon">✅</div>
+                    <div class="stat-icon stat-icon-blue">🛡️</div>
+                    <div class="stat-label">Trust Status</div>
+                    <div class="stat-value" id="trustStatusLabel" style="font-size:20px;color:var(--accent);">Trusted</div>
+                    <div class="stat-sub">Score: <span id="trustScore">0.95</span></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2-1" style="margin-bottom:20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><span class="card-icon">📈</span> Local Training Performance</h3>
+                    </div>
+                    <div class="grid grid-cols-2-1">
+                        <div class="chart-container-sm">
+                            <canvas id="localPerformanceChart"></canvas>
+                            <div style="display:flex;justify-content:center;gap:20px;margin-top:8px;font-size:12px;">
+                                <span style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#2563eb;"></span>Training Accuracy</span>
+                                <span style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;"></span>Validation Accuracy</span>
+                            </div>
+                        </div>
+                        <div class="stats-summary-box">
+                            <div class="stat-row"><span class="stat-name">Current Round</span><span class="stat-val" id="roundCurr">18 / 20</span></div>
+                            <div class="stat-row"><span class="stat-name">Local Epochs</span><span class="stat-val" id="localEpochs">5</span></div>
+                            <div class="stat-row"><span class="stat-name">Training Loss</span><span class="stat-val" id="trainLoss">0.21</span></div>
+                            <div class="stat-row"><span class="stat-name">Model Accuracy</span><span class="stat-val" id="modelAcc">92.4%</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3><span class="card-icon">⚡</span> Local Node Quick Actions &amp; Pipeline Control</h3>
+                        <div id="clientStatusBadge" style="display:flex;align-items:center;gap:8px;">
+                            <span id="clientDot" class="status-dot-lg dot-gray"></span>
+                            <span style="font-weight:600;font-size:12px;">Client: Standby</span>
+                        </div>
+                    </div>
+                    <div class="quick-actions" style="grid-template-columns:1fr 1fr;">
+                        <button class="action-btn action-primary" id="btnSplitData" onclick="prepareAndSplitData()">
+                            <span class="action-icon">📂</span>
+                            <div style="text-align:left;">
+                                <div><strong>Prepare / Split Data</strong></div>
+                                <div style="font-size:11px;font-weight:400;opacity:0.85;">Slice clinical profiles to this node (non-IID)</div>
+                            </div>
+                        </button>
+                        <button class="action-btn" id="btnStartClient" style="background:linear-gradient(135deg,#059669 0%,#10b981 100%);color:white;border-color:transparent;" onclick="startFLClientNode()">
+                            <span class="action-icon">🚀</span>
+                            <div style="text-align:left;">
+                                <div><strong>Start Local Training (FL Client)</strong></div>
+                                <div style="font-size:11px;font-weight:400;opacity:0.85;">Spawn Flower client → connect to central server</div>
+                            </div>
+                        </button>
+                        <button class="action-btn" id="btnStopClient" disabled onclick="stopFLClientNode()">
+                            <span class="action-icon">🛑</span>
+                            <div style="text-align:left;">
+                                <div><strong>Stop Client Node</strong></div>
+                                <div style="font-size:11px;font-weight:400;opacity:0.7;">Terminate local training process</div>
+                            </div>
+                        </button>
+                        <button class="action-btn" id="btnSendUpdate" onclick="sendModelUpdate()">
+                            <span class="action-icon">📤</span>
+                            <div style="text-align:left;">
+                                <div><strong>Send Model Update</strong></div>
+                                <div style="font-size:11px;font-weight:400;opacity:0.7;">Push weights → aggregator (manual)</div>
+                            </div>
+                        </button>
+                        <button class="action-btn" onclick="runPrivacyCheck()">
+                            <span class="action-icon">🛡️</span>
+                            <div style="text-align:left;">
+                                <div><strong>Privacy Check</strong></div>
+                                <div style="font-size:11px;font-weight:400;opacity:0.7;">Audit DP + quantization state</div>
+                            </div>
+                        </button>
+                        <button class="action-btn" onclick="location.href='/hospital/performance'">
+                            <span class="action-icon">📊</span>
+                            <div style="text-align:left;">
+                                <div><strong>Performance Reports</strong></div>
+                                <div style="font-size:11px;font-weight:400;opacity:0.7;">Plots, confusion matrix, ROC</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:20px;">
+                <div class="card-header">
+                    <h3><span class="card-icon">🖥️</span> Local Training Log Console — stdout/stderr Stream</h3>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="hAutoScroll" checked style="width:16px;height:16px;">
+                            <span style="font-size:12px;">Auto-scroll</span>
+                        </label>
+                        <button class="btn btn-outline btn-sm" onclick="clearHospConsole()">🗑 Clear</button>
+                        <span class="badge badge-success" id="hWSBadge" style="display:none;">🔴 LIVE</span>
+                    </div>
+                </div>
+                <div id="hospLogConsole" class="log-console log-console-hospital">
+                    <div class="log-line log-info">
+                        ▶ Welcome! To begin:
+                        <br> &nbsp;&nbsp;1. Click <strong>"Prepare / Split Data"</strong> (once per dataset refresh)
+                        <br> &nbsp;&nbsp;2. Ensure <em>Central Server</em> dashboard → Start Federated Round first
+                        <br> &nbsp;&nbsp;3. Click <strong>"Start Local Training (FL Client)"</strong> — this node will connect to Flower server and stream output above.
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2-1">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><span class="card-icon">🕐</span> Recent Activity</h3>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width:100px;">Time</th>
+                                <th>Event</th>
+                                <th style="width:100px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activityTable">
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3><span class="card-icon">🔐</span> Communication &amp; Privacy Overview</h3>
+                    </div>
+                    <div class="privacy-list" id="privacyList">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="unlearningModal" class="modal-backdrop">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>🗑️ Submit Unlearning Request</h3>
+            <button class="modal-close" onclick="closeUnlearningModal()">✕</button>
+        </div>
+        <form id="unlearningForm" onsubmit="submitUnlearning(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="ulReason">Reason for Unlearning</label>
+                    <textarea id="ulReason" rows="3" placeholder="Patient withdrew consent / data quality issue / GDPR request..." required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="ulPatients">Patient Identifiers (optional)</label>
+                    <textarea id="ulPatients" rows="2" placeholder="Comma-separated patient IDs, hashes, or 'ALL OF OUR PATIENTS'..."></textarea>
+                </div>
+                <div style="padding:12px;background:#fffbeb;border-radius:8px;border-left:3px solid var(--warning);font-size:12px;color:#92400e;">
+                    ⚠️ Unlearning triggers a 5-step verification pipeline: Client Identified → Historical Contribution Located → Contributions Removed → Model Recovery → Verification. This process may take several rounds to complete.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeUnlearningModal()" style="width:auto;">Cancel</button>
+                <button type="submit" class="btn btn-primary" style="width:auto;">Submit Request</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="toastContainer" class="toast-container"></div>
+<script>updateCurrentDateTime();</script>
+<script>
+let performanceChart = null;
+
+async function loadHospitalDashboard() {
+    try {
+        const me = await apiGet('/api/auth/me');
+        if (me.full_name) {
+            document.getElementById('doctorName').textContent = me.full_name;
+            const firstName = me.full_name.split(' ')[0];
+            document.getElementById('welcomeName').textContent = firstName;
+            const av = document.querySelector('.user-avatar');
+            if (av) av.textContent = me.full_name.charAt(0);
+        }
+        if (me.hospital_name) {
+            document.getElementById('hospitalName').textContent = me.hospital_name;
+        }
+    } catch(e) {}
+
+    try {
+        const stats = await apiGet('/api/hospital/dashboard/stats');
+        document.getElementById('localAccuracy').textContent = stats.local_accuracy.toFixed(1) + '%';
+        document.getElementById('modelAcc').textContent = stats.model_accuracy.toFixed(1) + '%';
+        const changeEl = document.getElementById('accChange');
+        if (stats.accuracy_change >= 0) {
+            changeEl.className = 'stat-change up';
+            changeEl.textContent = '▲ +' + stats.accuracy_change.toFixed(1) + '%';
+        } else {
+            changeEl.className = 'stat-change down';
+            changeEl.textContent = '▼ ' + stats.accuracy_change.toFixed(1) + '%';
+        }
+        document.getElementById('trainingStatus').textContent = stats.training_status;
+        const dot = document.getElementById('trainingStatusDot');
+        dot.className = 'status-dot-lg ' + (stats.training_status === 'In Progress' ? 'dot-amber' : stats.training_status === 'Completed' ? 'dot-green' : stats.training_status === 'Failed' ? 'dot-red' : 'dot-gray');
+        document.getElementById('trainingLastUpdate').textContent = 'Last updated: ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        document.getElementById('currRound').textContent = stats.current_round;
+        document.getElementById('roundCurr').textContent = stats.current_round + ' / ' + stats.total_rounds;
+        document.getElementById('nextRoundIn').textContent = 'Next round in: ' + (stats.next_round_minutes || '-') + ' min';
+        document.getElementById('dpEnabled').textContent = stats.privacy_enabled ? 'Enabled' : 'Disabled';
+        document.getElementById('dpEpsilon').textContent = stats.dp_epsilon;
+        document.getElementById('dataSent').innerHTML = stats.data_sent_mb.toFixed(1) + ' MB <span style="font-size:13px;opacity:0.7;font-weight:500;">Sent</span>';
+        document.getElementById('trustStatusLabel').textContent = stats.trust_status;
+        document.getElementById('trustScore').textContent = stats.trust_score.toFixed(2);
+        document.getElementById('localEpochs').textContent = stats.local_epochs;
+        document.getElementById('trainLoss').textContent = stats.training_loss.toFixed(2);
+    } catch(e) { console.error(e); }
+
+    try {
+        const perf = await apiGet('/api/hospital/training/performance');
+        if (performanceChart) performanceChart.destroy();
+        performanceChart = drawLineChart('localPerformanceChart', {
+            labels: perf.map(p => p.round),
+            series: [
+                { label: 'Training Accuracy', data: perf.map(p => p.training_accuracy), color: '#2563eb' },
+                { label: 'Validation Accuracy', data: perf.map(p => p.validation_accuracy), color: '#10b981' }
+            ]
+        }, { scales: { y: { min: 60, max: 100 } } });
+    } catch(e) { console.error(e); }
+
+    try {
+        const logs = await apiGet('/api/hospital/activity?limit=10');
+        const tbody = document.getElementById('activityTable');
+        tbody.innerHTML = logs.map(l => `
+            <tr>
+                <td style="font-size:12px;font-weight:600;color:var(--text-secondary);">${formatTime(l.timestamp)}</td>
+                <td>${l.description}</td>
+                <td>${l.status === 'Success' ? '<span class="badge badge-success">Success</span>' : l.status === 'In Progress' ? '<span class="badge badge-info">In Progress</span>' : l.status === 'Error' ? '<span class="badge badge-danger">Error</span>' : '<span class="badge badge-muted">' + l.status + '</span>'}</td>
+            </tr>
+        `).join('');
+    } catch(e) { console.error(e); }
+
+    try {
+        const privacy = await apiGet('/api/hospital/privacy-overview');
+        const list = document.getElementById('privacyList');
+        list.innerHTML = Object.values(privacy).map(p => `
+            <div class="privacy-item">
+                <div class="privacy-left">
+                    <div class="privacy-icon">🔍</div>
+                    <div class="privacy-name">${p.label}</div>
+                </div>
+                <div>
+                    ${(p.shared === false || p.enabled === false || p.active === false)
+                        ? '<span class="badge badge-danger">Not Shared</span>'
+                        : (p.status ? `<span class="badge badge-success">${p.status}</span>` : '<span class="badge badge-success">Active</span>')}
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+}
+
+async function startLocalTraining() {
+    const btn = document.getElementById('btnStartTraining');
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    try {
+        const res = await apiPost('/api/hospital/training/start', { local_epochs: 5 });
+        if (res.success) {
+            showToast(res.message, 'success');
+            setTimeout(async () => {
+                await apiPost('/api/hospital/training/complete/' + res.training_round_id);
+                showToast('Training completed successfully!', 'success');
+                loadHospitalDashboard();
+            }, 3000);
+            document.getElementById('trainingStatus').textContent = 'In Progress';
+            document.getElementById('trainingStatusDot').className = 'status-dot-lg dot-amber';
+        } else {
+            showToast(res.message, 'warning');
+        }
+    } catch(e) {
+        showToast('Failed to start training', 'error');
+    }
+    btn.disabled = false;
+    btn.style.opacity = '1';
+}
+
+async function sendModelUpdate() {
+    const btn = document.getElementById('btnSendUpdate');
+    btn.disabled = true;
+    try {
+        const res = await apiPost('/api/hospital/training/send-update');
+        if (res.success) {
+            showToast(res.message, 'success');
+            loadHospitalDashboard();
+        } else {
+            showToast(res.message || 'Failed to send update', 'error');
+        }
+    } catch(e) {
+        showToast('Failed to send model update', 'error');
+    }
+    btn.disabled = false;
+}
+
+function openUnlearningModal() {
+    document.getElementById('unlearningModal').classList.add('show');
+}
+
+function closeUnlearningModal() {
+    document.getElementById('unlearningModal').classList.remove('show');
+    document.getElementById('unlearningForm').reset();
+}
+
+async function submitUnlearning(e) {
+    e.preventDefault();
+    const reason = document.getElementById('ulReason').value;
+    const patients = document.getElementById('ulPatients').value;
+    try {
+        const res = await apiPost('/api/hospital/unlearning/request', { reason, patient_identifiers: patients });
+        if (res.success) {
+            showToast(res.message, 'success');
+            closeUnlearningModal();
+        } else {
+            showToast('Failed to submit request', 'error');
+        }
+    } catch(e) {
+        showToast('Failed to submit unlearning request', 'error');
+    }
+}
+
+let hospWs = null;
+let activeClientProcessId = null;
+let currentHospitalId = null;
+let currentHospitalCode = null;
+
+function getHospAuthToken() {
+    const c = document.cookie.match(/access_token=([^;]+)/);
+    return c ? decodeURIComponent(c[1]).replace('Bearer ','') : null;
+}
+
+function connectHospWS() {
+    if (!currentHospitalId) return;
+    const token = getHospAuthToken();
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//${location.host}/ws/hospital/${currentHospitalId}?token=${encodeURIComponent(token || '')}`;
+    try {
+        hospWs = new WebSocket(wsUrl);
+        hospWs.onopen = () => {
+            document.getElementById('hWSBadge').style.display = 'inline-block';
+            if (activeClientProcessId) {
+                hospWs.send(JSON.stringify({ action: 'subscribe_process', process_id: activeClientProcessId }));
+            }
+        };
+        hospWs.onmessage = (ev) => {
+            try {
+                const msg = JSON.parse(ev.data);
+                if (msg.scope === 'hospital_logs' || msg.process_type === 'fl_client' && msg.type === 'process_log') {
+                    appendHospLogLine(msg.line);
+                } else if (msg.type === 'process_log') {
+                    appendHospLogLine(msg.line);
+                } else if (msg.type === 'process_status' && msg.process_type === 'fl_client') {
+                    setClientStatus(msg.status);
+                }
+            } catch(e) {}
+        };
+        hospWs.onclose = () => {
+            document.getElementById('hWSBadge').style.display = 'none';
+            setTimeout(connectHospWS, 3000);
+        };
+        hospWs.onerror = () => { try { hospWs.close(); } catch(e) {} };
+    } catch(e) {}
+}
+
+function appendHospLogLine(line) {
+    const console = document.getElementById('hospLogConsole');
+    if (!console) return;
+    const d = document.createElement('div');
+    const isErr = (line || '').toLowerCase().includes('[ERR]') || (line || '').includes('Error:') || (line || '').includes('Exception');
+    const isOk = (line || '').includes('[SYSTEM]') || (line || '').includes('Success') || (line || '').includes('Saved');
+    d.className = 'log-line ' + (isErr ? 'log-error' : isOk ? 'log-success' : 'log-default');
+    d.textContent = line;
+    console.appendChild(d);
+    while (console.children.length > 500) console.removeChild(console.firstChild);
+    if (document.getElementById('hAutoScroll') && document.getElementById('hAutoScroll').checked) {
+        console.scrollTop = console.scrollHeight;
+    }
+}
+
+function clearHospConsole() {
+    const c = document.getElementById('hospLogConsole');
+    if (c) c.innerHTML = '<div class="log-line log-info">▶ Console cleared. Waiting for new FL Client output...</div>';
+}
+
+function setClientStatus(status) {
+    const dot = document.getElementById('clientDot');
+    const txt = document.querySelector('#clientStatusBadge span:last-child');
+    const btnStart = document.getElementById('btnStartClient');
+    const btnStop = document.getElementById('btnStopClient');
+    if (!dot) return;
+    const isRunning = status === 'running' || status === 'starting';
+    dot.className = 'status-dot-lg ' + (status === 'running' ? 'dot-green' : status === 'starting' ? 'dot-amber' : status === 'failed' ? 'dot-red' : status === 'completed' ? 'dot-green' : 'dot-gray');
+    if (txt) txt.textContent = 'Client: ' + (status.charAt(0).toUpperCase() + status.slice(1));
+    if (btnStart) btnStart.disabled = isRunning;
+    if (btnStop) btnStop.disabled = !isRunning;
+}
+
+async function refreshClientStatus() {
+    try {
+        const me = await apiGet('/api/auth/me');
+        if (me && me.hospital_id) currentHospitalId = me.hospital_id;
+        if (me && me.hospital_name) {
+            const codeMap = { 'City Hospital': 'Hospital_A', 'General Hospital': 'Hospital_B', 'Metro Hospital': 'Hospital_C',
+                             'St. Mary\'s Medical Center': 'Hospital_D', 'University Hospital': 'Hospital_E', 'Valley Medical Center': 'Hospital_F' };
+            currentHospitalCode = codeMap[me.hospital_name] || ('Hospital_' + (me.hospital_name.split(' ').pop().charAt(0).toUpperCase()));
+        }
+    } catch(e) {}
+    try {
+        const s = await apiGet('/api/hospital/training/status');
+        currentHospitalCode = s.hospital_code;
+        if (s.client_running) {
+            const active = s.processes.find(p => p.status === 'running' || p.status === 'starting');
+            if (active) {
+                activeClientProcessId = active.process_id;
+                setClientStatus(active.status);
+                const logsRes = await apiGet('/api/hospital/processes/' + active.process_id);
+                if (logsRes && logsRes.logs) {
+                    const console = document.getElementById('hospLogConsole');
+                    if (console) console.innerHTML = '';
+                    logsRes.logs.forEach(l => appendHospLogLine(l));
+                }
+                if (hospWs && hospWs.readyState === 1) {
+                    hospWs.send(JSON.stringify({ action: 'subscribe_process', process_id: active.process_id }));
+                }
+                return;
+            }
+        }
+        setClientStatus('standby');
+    } catch(e) { setClientStatus('standby'); }
+}
+
+async function prepareAndSplitData() {
+    try {
+        const r = await apiPost('/api/hospital/data/prepare-split', { regenerate: true });
+        if (r.success) {
+            showToast(r.message, 'success');
+            appendHospLogLine('[UI] Data split pipeline initiated at ' + new Date().toLocaleTimeString());
+        } else showToast(r.message, 'warning');
+    } catch(e) { showToast('Failed to start data split', 'error'); }
+}
+
+async function startFLClientNode() {
+    try {
+        const payload = {
+            server_address: 'localhost:8080',
+            use_quantization: true,
+            use_dp: false,
+            force_cpu: false
+        };
+        const r = await apiPost('/api/hospital/training/start-client', payload);
+        if (r.success) {
+            activeClientProcessId = r.process_id;
+            showToast(r.message, 'success');
+            setClientStatus('starting');
+            appendHospLogLine('[UI] FL Client spawned at ' + new Date().toLocaleTimeString());
+            if (hospWs && hospWs.readyState === 1) {
+                hospWs.send(JSON.stringify({ action: 'subscribe_process', process_id: r.process_id }));
+            }
+            setTimeout(() => refreshClientStatus(), 2000);
+        } else showToast(r.message, 'warning');
+    } catch(e) { showToast('Failed to start FL client', 'error'); }
+}
+
+async function stopFLClientNode() {
+    if (!confirm('Stop the running FL Client node process?')) return;
+    try {
+        const r = await apiPost('/api/hospital/training/stop-client');
+        showToast(r.message, r.success ? 'success' : 'warning');
+        setTimeout(() => refreshClientStatus(), 1000);
+    } catch(e) { showToast('Failed to stop client', 'error'); }
+}
+
+async function runPrivacyCheck() {
+    try {
+        const r = await apiPost('/api/hospital/privacy/check');
+        if (r.success) {
+            showToast(r.message, 'success');
+            appendHospLogLine('[PRIVACY] Check passed: DP=' + (r.dp_enabled?'ON':'OFF') + ' | Quant=' + (r.quantization_enabled?'ON':'OFF') + ' | Raw Shared=' + r.raw_data_shared);
+        }
+    } catch(e) { showToast('Privacy check failed', 'error'); }
+}
+
+async function startLocalTraining() {
+    await startFLClientNode();
+}
+
+(async function bootstrapHosp() {
+    try {
+        const me = await apiGet('/api/auth/me');
+        if (me && me.hospital_id) {
+            currentHospitalId = me.hospital_id;
+            connectHospWS();
+        }
+    } catch(e) {}
+    await refreshClientStatus();
+})();
+
+loadHospitalDashboard();
+setInterval(loadHospitalDashboard, 30000);
+setInterval(refreshClientStatus, 15000);
+</script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

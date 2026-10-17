@@ -1,0 +1,260 @@
+{% extends "_admin_base.html" %}
+{% block title %}Experiments{% endblock %}
+{% block page_name %}Experiments Panel{% endblock %}
+{% block content %}
+<style>
+    .grid-exp{display:grid;grid-template-columns:380px 1fr;gap:16px}
+    @media(max-width:960px){.grid-exp{grid-template-columns:1fr}}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+    .card h3{margin:0 0 12px 0;font-size:16px;color:#0f172a}
+    .card .sub{font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.5}
+    .form-row{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+    .form-row label{font-size:12px;font-weight:600;color:#334155}
+    .form-row input,.form-row select{padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;width:100%;box-sizing:border-box}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btn-primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;transition:.15s}
+    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(37,99,235,.3)}
+    .btn-primary:disabled{opacity:.5}
+    .btn-secondary{background:#f1f5f9;color:#0f172a;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:500}
+    .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#e0e7ff;color:#3730a3;margin-right:4px}
+    .tag-q{background:#dcfce7;color:#166534}
+    .tag-dp{background:#fde68a;color:#78350f}
+    .tag-baseline{background:#f1f5f9;color:#334155}
+    .hint{font-size:11px;color:#94a3b8;margin-top:2px}
+    .helper-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:4px}
+    .helper-btn{padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:left;font-size:12px;cursor:pointer;color:#0f172a;font-weight:500;transition:.1s}
+    .helper-btn:hover{background:#eff6ff;border-color:#bfdbfe}
+    .helper-btn small{display:block;color:#64748b;font-weight:400;margin-top:2px}
+    .runs-list{max-height:480px;overflow-y:auto}
+    .run-row{padding:12px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:10px;transition:.1s;cursor:pointer}
+    .run-row:hover{background:#f8fafc;border-color:#cbd5e1}
+    .run-row .name{font-weight:600;color:#0f172a;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .run-row .meta{font-size:11px;color:#64748b;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap}
+    .log-panel{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:14px;height:220px;overflow-y:auto;font-family:'Courier New',monospace;font-size:12px;line-height:1.5;margin-top:12px}
+    .log-panel .line{margin:2px 0}
+    .badge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;display:inline-block}
+    .badge-running{background:#dcfce7;color:#166534}
+    .badge-completed{background:#dbeafe;color:#1e40af}
+    .badge-failed,.badge-stopped{background:#fee2e2;color:#991b1b}
+    .badge-starting{background:#fef3c7;color:#92400e}
+</style>
+
+<div style="margin-bottom:16px;color:#475569;font-size:14px">
+    Launch ADSM experiment plans end-to-end (splitting → init model → server + N clients), then parse, aggregate, and generate figures — all from the browser.
+</div>
+
+<div class="grid-exp">
+    <div>
+        <div class="card">
+            <h3>🧪 Run New Experiment</h3>
+            <div class="sub">Launch one of the experiment matrix presets. Each plan runs full FL rounds with quantize / DP / baseline combinations.</div>
+
+            <div class="form-row">
+                <label>Experiment Plan</label>
+                <select id="exp_plan">
+                    <option value="default">Default (baseline + quantization + DP) — RECOMMENDED</option>
+                    <option value="baseline_only">Baseline Only</option>
+                    <option value="quant_only">Quantization Only</option>
+                    <option value="dp_only">DP Only (ε=1.0)</option>
+                    <option value="adsm_paper">Full ADSM Paper Matrix (long)</option>
+                    <option value="quick_mini">Mini Quick Smoke Test (few rounds)</option>
+                </select>
+            </div>
+
+            <div class="row2">
+                <div class="form-row">
+                    <label>Runs per config</label>
+                    <input type="number" id="exp_runs" value="3" min="1" max="20">
+                </div>
+                <div class="form-row">
+                    <label>FL Rounds</label>
+                    <input type="number" id="exp_rounds" value="20" min="1" max="500">
+                    <div class="hint">Override default rounds for this run.</div>
+                </div>
+            </div>
+
+            <div class="helper-grid" style="margin-top:4px">
+                <button class="helper-btn" onclick="runHelper(this,'parse')">
+                    📥 Parse
+                    <small>Parse per-config JSON metrics → CSVs</small>
+                </button>
+                <button class="helper-btn" onclick="runHelper(this,'aggregate')">
+                    📊 Aggregate
+                    <small>Compute mean/std across runs</small>
+                </button>
+                <button class="helper-btn" onclick="runHelper(this,'generate_figures')">
+                    🖼️ Generate Figures
+                    <small>Render all comparison plots</small>
+                </button>
+            </div>
+
+            <div style="margin-top:14px;display:flex;gap:10px">
+                <button class="btn-primary" style="flex:1" onclick="runExperiment(this)">▶ Run Experiment</button>
+                <button class="btn-secondary" onclick="refreshProcessList()">Refresh</button>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+            <h3>📝 Experiment Live Logs</h3>
+            <div class="sub" id="selProcDesc">Click a running/completed experiment process below.</div>
+            <div class="log-panel" id="logPanel">
+                <div class="line" style="color:#64748b">[no process selected]</div>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <h3>📂 Experiment Runs &amp; Outputs</h3>
+            <div class="sub" style="display:flex;justify-content:space-between">
+                <span>Recent experiment directory contents. <button class="btn-secondary" onclick="refreshExpList()">↻ Refresh</button></span>
+            </div>
+            <div class="runs-list" id="expListBody">
+                <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading experiment list…</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+            <h3>🔄 Recent Processes</h3>
+            <div id="procListBody" style="font-size:13px">
+                <div class="empty-state">—</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let adminWS = null;
+let selectedProcId = null;
+
+function getCookieToken() {
+    const c = document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('access_token='));
+    return c ? decodeURIComponent(c.split('=')[1]).replace('Bearer ','') : '';
+}
+function connectAdminWS() {
+    const token = getCookieToken();
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${location.host}/ws/admin?token=${encodeURIComponent('Bearer ' + token)}`;
+    try {
+        adminWS = new WebSocket(url);
+        adminWS.onmessage = (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === 'process_log' || msg.type === 'process_status') {
+                if (msg.process_id === selectedProcId) appendLog(msg);
+                refreshProcessList();
+            }
+        };
+        adminWS.onclose = () => setTimeout(connectAdminWS, 3000);
+    } catch(e) {}
+}
+function appendLog(msg) {
+    const panel = document.getElementById('logPanel');
+    const div = document.createElement('div');
+    div.className = 'line';
+    const ts = (msg.timestamp || '').substring(11,19);
+    div.textContent = `[${ts}] ${msg.line || msg.status || ''}`;
+    panel.appendChild(div);
+    panel.scrollTop = panel.scrollHeight;
+    while (panel.childElementCount > 300) panel.removeChild(panel.firstChild);
+}
+function statusBadge(s) {
+    const map = { running:['badge-running','Running'], starting:['badge-starting','Starting'],
+        completed:['badge-completed','Completed'], failed:['badge-failed','Failed'],
+        stopped:['badge-stopped','Stopped']};
+    const [cls,text] = map[s] || ['badge-starting', s||'unknown'];
+    return `<span class="badge ${cls}">${text}</span>`;
+}
+async function runExperiment(btn) {
+    btn.disabled = true;
+    try {
+        const body = {
+            exp: document.getElementById('exp_plan').value,
+            runs: parseInt(document.getElementById('exp_runs').value),
+            num_rounds: parseInt(document.getElementById('exp_rounds').value)
+        };
+        const r = await apiPost('/api/admin/experiments/run', body);
+        showToast(r.message || 'Launched', r.success ? 'success' : 'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function runHelper(btn, kind) {
+    btn.disabled = true;
+    try {
+        const map = { parse:'parse', aggregate:'aggregate', generate_figures:'generate-figures' };
+        const url = `/api/admin/experiments/${map[kind]}`;
+        const r = await apiPost(url);
+        showToast(r.message || 'Launched', r.success ? 'success':'warning');
+        if (r.success) { refreshProcessList(); if (r.process_id) selectProc(r.process_id); }
+    } catch(e) { showToast(String(e),'error'); }
+    finally { btn.disabled = false; }
+}
+async function selectProc(pid) {
+    selectedProcId = pid;
+    document.getElementById('selProcDesc').textContent = `Streaming ${pid}…`;
+    const panel = document.getElementById('logPanel');
+    panel.innerHTML = '';
+    try {
+        const d = await apiGet(`/api/admin/processes/${pid}?tail=300`);
+        (d.logs||[]).forEach(line => {
+            const div = document.createElement('div'); div.className = 'line'; div.textContent = line; panel.appendChild(div);
+        });
+        panel.scrollTop = panel.scrollHeight;
+    } catch(e) {}
+}
+async function refreshProcessList() {
+    try {
+        const data = await apiGet('/api/admin/processes');
+        const procs = (data.processes||[]).slice()
+            .filter(p => /experim|parse|aggreg|figures|graph|split|init|server|eval/.test(p.process_type))
+            .sort((a,b)=>new Date(b.started_at)-new Date(a.started_at)).slice(0,15);
+        const body = document.getElementById('procListBody');
+        if (!procs.length) { body.innerHTML = '<div style="padding:18px;color:#94a3b8;text-align:center">No recent process records.</div>'; return; }
+        body.innerHTML = procs.map(p=>`
+            <div style="padding:8px 10px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="selectProc('${p.process_id}')">
+                <div style="flex:1">
+                    <div style="font-weight:600;color:#0f172a">${p.process_type}</div>
+                    <div style="font-size:11px;color:#64748b">${p.process_id} · started ${(p.started_at||'').substring(0,16)}</div>
+                </div>
+                <div>${statusBadge(p.status)}</div>
+                ${(p.status==='running'||p.status==='starting')?`<button class="btn-secondary" style="background:#fee2e2;color:#991b1b" onclick="event.stopPropagation();stopProc('${p.process_id}','admin')">Stop</button>`:''}
+            </div>
+        `).join('');
+    } catch(e) {}
+}
+async function refreshExpList() {
+    const body = document.getElementById('expListBody');
+    try {
+        const d = await apiGet('/api/admin/experiments/list');
+        const entries = (d.entries||[]).sort((a,b)=>{
+            if (a.is_dir !== b.is_dir) return a.is_dir?-1:1;
+            return (b.modified_at||'').localeCompare(a.modified_at||'');
+        });
+        if (!entries.length) { body.innerHTML = '<div style="padding:24px;color:#94a3b8;text-align:center">No runs yet. Launch an experiment to see results appear here.</div>'; return; }
+        body.innerHTML = entries.map(e=>`
+            <div class="run-row" onclick="window.location='/admin/outputs'">
+                <div class="name">
+                    ${e.is_dir?'📁 ': (e.viewable?'📄 ':'🔒 ')}${e.name}
+                    ${/quant/i.test(e.name)?'<span class="tag tag-q">Quant</span>':''}
+                    ${/dp|eps/i.test(e.name)?'<span class="tag tag-dp">DP</span>':''}
+                    ${/baseline|pure/i.test(e.name)?'<span class="tag tag-baseline">Baseline</span>':''}
+                    ${/aggregate|mean|avg/i.test(e.name)?'<span class="tag">Aggregate</span>':''}
+                    ${/figure|plot|graph/i.test(e.name)?'<span class="tag" style="background:#e0e7ff;color:#3730a3">Figure</span>':''}
+                </div>
+                <div class="meta">
+                    <span>${e.is_dir?'folder':(e.ext||'file')}</span>
+                    ${e.size_bytes!==undefined?`<span>${(e.size_bytes<1024*1024)?(e.size_bytes/1024).toFixed(1)+' KB':(e.size_bytes/1024/1024).toFixed(2)+' MB'}</span>`:''}
+                    <span>${(e.modified_at||'').substring(0,16)}</span>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { body.innerHTML = '<div style="padding:18px;color:#94a3b8;text-align:center">Experiment workspace empty.</div>'; }
+}
+connectAdminWS();
+refreshProcessList();
+refreshExpList();
+setInterval(refreshProcessList, 6000);
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "_admin_base.html" %}
+{% block title %}Global Model{% endblock %}
+{% block page_name %}Global Model & Performance{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Global Model Management</h1>
+    <p>Monitor aggregated model performance, checkpoints, and training progression across all federated rounds.</p>
+</div>
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><h3><span class="card-icon">📈</span> Global Model Performance</h3></div>
+    <div class="chart-container"><canvas id="gmpChart"></canvas></div>
+</div>
+<div class="grid grid-4">
+    <div class="card"><h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">🏆 Best Accuracy</h3><div style="font-size:32px;font-weight:800;color:var(--success);" id="baVal">—</div><p style="font-size:12px;color:var(--text-secondary);" id="baRound">—</p></div>
+    <div class="card"><h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">📊 Average Accuracy</h3><div style="font-size:32px;font-weight:800;color:var(--accent);" id="aaVal">—</div><p style="font-size:12px;color:var(--text-secondary);">Across all completed rounds</p></div>
+    <div class="card"><h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">📉 Best Loss</h3><div style="font-size:32px;font-weight:800;color:var(--purple);" id="blVal">—</div><p style="font-size:12px;color:var(--text-secondary);" id="blRound">—</p></div>
+    <div class="card"><h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">🔄 Current Round</h3><div style="font-size:32px;font-weight:800;color:var(--warning);" id="crVal">—</div><p style="font-size:12px;color:var(--text-secondary);" id="crRemain">—</p></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadGMPerf() {
+    const stats = await apiGet('/api/admin/dashboard/stats');
+    document.getElementById('baVal').textContent = stats.best_accuracy.toFixed(1) + '%';
+    document.getElementById('baRound').textContent = 'Round ' + stats.best_accuracy_round;
+    document.getElementById('aaVal').textContent = stats.average_accuracy.toFixed(1) + '%';
+    document.getElementById('blVal').textContent = stats.best_loss.toFixed(3);
+    document.getElementById('blRound').textContent = 'Round ' + stats.best_loss_round;
+    document.getElementById('crVal').textContent = stats.current_round + ' / 20';
+    document.getElementById('crRemain').textContent = stats.rounds_remaining + ' rounds remaining';
+    const perf = await apiGet('/api/admin/global-model/performance');
+    drawLineChart('gmpChart', {
+        labels: perf.map(p => 'R' + p.round),
+        series: [
+            { label: 'Accuracy (%)', data: perf.map(p => p.accuracy), color: '#2563eb', fill: true },
+            { label: 'Loss (scaled)', data: perf.map(p => p.loss ? 100 - (p.loss * 100) : null), color: '#8b5cf6' }
+        ]
+    });
+}
+loadGMPerf();
+</script>
+{% endblock %}

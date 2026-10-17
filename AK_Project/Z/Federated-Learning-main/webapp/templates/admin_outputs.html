@@ -1,0 +1,286 @@
+{% extends "_admin_base.html" %}
+{% block title %}Models &amp; Results Browser{% endblock %}
+{% block page_name %}Models &amp; Results{% endblock %}
+{% block content %}
+<style>
+    .browser-wrap{display:grid;grid-template-columns:240px 1fr 1.2fr;gap:14px;height:calc(100vh - 140px);min-height:620px}
+    @media(max-width:1200px){.browser-wrap{grid-template-columns:220px 1fr;height:auto}}
+    @media(max-width:760px){.browser-wrap{grid-template-columns:1fr}}
+    .panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(15,23,42,.04);display:flex;flex-direction:column;overflow:hidden}
+    .panel h4{margin:0 0 8px 0;font-size:14px;color:#0f172a;padding-bottom:6px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between}
+    .roots-list{overflow-y:auto;flex:1}
+    .root-item{padding:9px 11px;border-radius:8px;font-size:13px;cursor:pointer;margin-bottom:4px;color:#334155;transition:.1s;display:flex;align-items:center;gap:8px}
+    .root-item:hover{background:#f1f5f9}
+    .root-item.active{background:#eff6ff;color:#1e40af;font-weight:600}
+    .root-icon{font-size:16px}
+    .file-list{overflow-y:auto;flex:1;cursor:pointer;user-select:none}
+    .fl-header{display:grid;grid-template-columns:1fr 80px 120px;gap:8px;padding:6px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #f1f5f9;font-weight:600;background:#f8fafc;position:sticky;top:0;z-index:1}
+    .fl-row{display:grid;grid-template-columns:1fr 80px 120px;gap:8px;padding:7px 8px;font-size:12px;color:#334155;border-bottom:1px solid #f8fafc;align-items:center}
+    .fl-row:hover{background:#f8fafc}
+    .fl-row.dir{color:#1d4ed8;font-weight:500}
+    .fl-row.up{color:#64748b;font-style:italic}
+    .cr-actions{padding:6px 0 8px;border-bottom:1px solid #f1f5f9;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
+    .crumb{color:#2563eb;font-size:12px;cursor:pointer}
+    .crumb-sep{color:#cbd5e1;margin:0 2px}
+    .btn-icon{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;color:#0f172a}
+    .btn-icon:hover{background:#e2e8f0}
+    .btn-primary{background:#2563eb;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer}
+    .btn-primary:hover{background:#1d4ed8}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+    .summary-card{background:#fff;border-radius:12px;padding:12px;border:1px solid #e2e8f0}
+    .summary-card .k{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px}
+    .summary-card .v{font-size:20px;font-weight:700;color:#0f172a;margin-top:4px}
+    .summary-card .s{font-size:11px;color:#64748b;margin-top:2px}
+    .view-empty{color:#94a3b8;text-align:center;padding:40px;font-size:13px}
+    .view-area{overflow:auto;flex:1;font-size:13px}
+    .csv-table{border-collapse:collapse;width:100%;font-size:12px}
+    .csv-table th{background:#f8fafc;color:#0f172a;padding:7px 10px;text-align:left;border-bottom:2px solid #e2e8f0;position:sticky;top:0;font-weight:600;white-space:nowrap}
+    .csv-table td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155;white-space:nowrap}
+    .csv-table tr:hover td{background:#f8fafc}
+    .csv-wrap{overflow:auto;flex:1;border:1px solid #e2e8f0;border-radius:8px}
+    .image-wrap{display:flex;align-items:center;justify-content:center;padding:16px;flex:1;overflow:auto}
+    .image-wrap img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 6px 18px rgba(15,23,42,.12)}
+    .text-view{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;font-family:'Courier New',monospace;font-size:12px;line-height:1.5;overflow:auto;flex:1;white-space:pre-wrap}
+    .md-view{padding:16px;font-size:13px;line-height:1.6;color:#1e293b;overflow:auto;flex:1}
+    .md-view h1,.md-view h2,.md-view h3{color:#0f172a;margin:16px 0 8px}
+    .md-view pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+    .md-view code{background:#f1f5f9;padding:2px 5px;border-radius:4px;font-size:12px}
+    .md-view a{color:#2563eb}
+    .json-view{font-family:'Courier New',monospace;font-size:12px;background:#f8fafc;padding:12px;border-radius:8px;overflow:auto;flex:1;color:#334155}
+    .ext-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:6px;text-transform:uppercase}
+    .ext-csv{background:#dcfce7;color:#166534}
+    .ext-pth{background:#fde68a;color:#78350f}
+    .ext-png,.ext-jpg{background:#e0e7ff;color:#3730a3}
+    .ext-md{background:#fef3c7;color:#92400e}
+    .ext-json{background:#dbeafe;color:#1e40af}
+    .ext-log,.ext-txt{background:#f1f5f9;color:#334155}
+    .empty-note{font-size:11px;color:#94a3b8;font-style:italic;margin-top:4px}
+    @media(max-width:900px){
+        .browser-wrap{grid-template-columns:1fr;height:auto;gap:10px}
+        .panel{min-height:360px}
+        .summary-grid{grid-template-columns:repeat(2,1fr)}
+    }
+</style>
+
+<div class="summary-grid">
+    <div class="summary-card">
+        <div class="k">Model Checkpoints</div>
+        <div class="v" id="sumModels">—</div>
+        <div class="s" id="sumModelsS"></div>
+    </div>
+    <div class="summary-card">
+        <div class="k">Results Files</div>
+        <div class="v" id="sumResults">—</div>
+        <div class="s">CSVs, JSONs, plots, reports</div>
+    </div>
+    <div class="summary-card">
+        <div class="k">Experiment Runs</div>
+        <div class="v" id="sumExp">—</div>
+        <div class="s">federated_healthcare/experiments/</div>
+    </div>
+</div>
+
+<div class="browser-wrap">
+    <div class="panel">
+        <h4>📁 Workspace Roots</h4>
+        <div class="roots-list" id="rootsList"></div>
+        <div class="empty-note" style="margin-top:10px;padding:8px 2px">Click any root to browse files. Only allowlisted directories are visible.</div>
+    </div>
+
+    <div class="panel">
+        <h4 id="fileListTitle">Files</h4>
+        <div class="cr-actions" id="crumbRow">
+            <span class="crumb" onclick="goRoot()">all</span>
+        </div>
+        <div class="file-list" id="fileList">
+            <div class="view-empty">Select a root folder to browse.</div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h4 id="viewTitle">
+            <span>Inline Preview / Download</span>
+            <div style="display:flex;gap:6px">
+                <button class="btn-primary" id="downloadBtn" onclick="downloadSelected()" style="display:none">⬇ Download</button>
+                <button class="btn-icon" onclick="refreshCurrent()" title="Refresh">↻</button>
+            </div>
+        </h4>
+        <div id="viewArea" class="view-area">
+            <div class="view-empty">Select any file in the middle panel to preview it here. CSV tables, images, markdown, logs, and JSON are rendered inline.</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentRoot = null;
+let currentPath = '';
+let currentFile = null;
+
+function fmtSize(b) {
+    if (b === null || b === undefined) return '';
+    if (b < 1024) return b + ' B';
+    if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+    if (b < 1024*1024*1024) return (b/(1024*1024)).toFixed(2) + ' MB';
+    return (b/(1024*1024*1024)).toFixed(2) + ' GB';
+}
+function fmtTime(s) {
+    if (!s) return '';
+    return s.substring(0,19).replace('T',' ');
+}
+function extBadge(ext) {
+    if (!ext) return '';
+    const e = ext.toLowerCase().replace('.','');
+    const cls = 'ext-' + e;
+    return `<span class="ext-badge ext-${e}">${e}</span>`;
+}
+async function loadSummary() {
+    try {
+        const s = await apiGet('/api/admin/outputs/summary');
+        const set = (id,n,sub) => { const e=document.getElementById(id); if(e){ e.textContent = ''+n; const se=document.getElementById(id+'S'); if(se&&sub) se.textContent=sub; } };
+        set('sumModels', (s.models_root||{}).count || 0, (s.models_root||{}).total_size ? fmtSize(s.models_root.total_size) + ' total' : '.pth checkpoints');
+        set('sumResults',
+            ((s.results_root||{}).count||0) + ((s.plots_root||{}).count||0) + ((s.reports_root||{}).count||0) + ((s.figures_root||{}).count||0),
+            'results + plots + reports'
+        );
+        set('sumExp', (s.experiments_root||{}).count || 0, 'experiment outputs tracked');
+    } catch(e) {}
+}
+async function loadRoots() {
+    try {
+        const r = await apiGet('/api/admin/workspace/roots');
+        const list = document.getElementById('rootsList');
+        list.innerHTML = (r.roots||[]).map(rt => `
+            <div class="root-item ${rt.key === currentRoot ? 'active':''}" data-root="${rt.key}" onclick="pickRoot('${rt.key}')">
+                <span class="root-icon">${rt.writable ? '📂': '📁'}</span>
+                <div style="flex:1">
+                    <div style="font-weight:500">${rt.label || rt.key}</div>
+                    <div style="font-size:10px;color:#94a3b8">${rt.file_count||0} files · ${rt.writable?'writable':'read-only'}</div>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+}
+function pickRoot(key) {
+    currentRoot = key;
+    currentPath = '';
+    loadRoots();
+    refreshFileList();
+}
+function goRoot() { currentPath=''; refreshFileList(); }
+async function refreshCurrent() { if (currentRoot) refreshFileList(); if (currentFile) viewSelected(currentFile.name); }
+async function refreshFileList() {
+    if (!currentRoot) return;
+    document.getElementById('fileListTitle').textContent = `Files · ${currentRoot}`;
+    const row = document.getElementById('crumbRow');
+    const parts = currentPath.split('/').filter(Boolean);
+    let html = `<span class="crumb" onclick="currentPath='';refreshFileList()">${currentRoot}</span>`;
+    let cumul = '';
+    parts.forEach(p=>{
+        cumul += p + '/';
+        const enc = encodeURIComponent(cumul.slice(0,-1));
+        html += `<span class="crumb-sep">/</span><span class="crumb" onclick="currentPath='${cumul.slice(0,-1)}';refreshFileList()">${p}</span>`;
+    });
+    row.innerHTML = html;
+    try {
+        const r = await apiGet('/api/admin/workspace/ls?root=' + encodeURIComponent(currentRoot) + '&path=' + encodeURIComponent(currentPath));
+        const entries = (r.entries||[]).sort((a,b)=>{
+            if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+        const body = document.getElementById('fileList');
+        const up = currentPath ? `<div class="fl-row up" onclick="currentPath='${currentPath.split('/').slice(0,-1).join('/')}';refreshFileList()"><div>⬆ .. parent</div><div></div><div></div></div>` : '';
+        body.innerHTML = `<div class="fl-header"><div>Name</div><div>Size</div><div>Modified</div></div>` + up + entries.map(e=>`
+            <div class="fl-row ${e.is_dir?'dir':''}" onclick="${e.is_dir ? `navDir('${e.name}')` : `viewSelected('${e.name}', ${e.viewable}, ${e.downloadable})`}" data-name="${e.name}">
+                <div>${e.is_dir?'📁 ': (e.viewable?'📄 ':'🔒 ')}${e.name}${e.ext ? extBadge(e.ext):''}</div>
+                <div>${e.is_dir?'—':fmtSize(e.size_bytes)}</div>
+                <div style="font-size:11px;color:#94a3b8">${fmtTime(e.modified_at).substring(0,16)}</div>
+            </div>
+        `).join('');
+        if (!entries.length && !currentPath.length) {
+            body.innerHTML += `<div class="empty-note" style="padding:16px;text-align:center">No entries yet.</div>`;
+        }
+    } catch(e) { showToast(String(e),'error'); }
+}
+function navDir(name) { currentPath = currentPath ? (currentPath + '/' + name) : name; refreshFileList(); }
+async function viewSelected(name, viewable, downloadable) {
+    const p = currentPath ? currentPath + '/' + name : name;
+    currentFile = {name:name, path:p, root:currentRoot};
+    const btn = document.getElementById('downloadBtn');
+    btn.style.display = downloadable ? 'inline-flex' : 'none';
+    btn.textContent = '⬇ Download ' + name;
+    if (!viewable) {
+        document.getElementById('viewArea').innerHTML = `<div class="view-empty">Preview is not available for <b>${name}</b>. Use the download button to save the file.</div>`;
+        return;
+    }
+    try {
+        const data = await apiGet('/api/admin/workspace/view?root=' + encodeURIComponent(currentRoot) + '&path=' + encodeURIComponent(p));
+        renderView(name, data);
+    } catch(e) { showToast('Preview failed: ' + String(e),'error'); }
+}
+function renderView(name, data) {
+    const area = document.getElementById('viewArea');
+    if (data.kind === 'image') {
+        const url = '/api/admin/workspace/download?root=' + encodeURIComponent(data.root_key) + '&path=' + encodeURIComponent(data.rel_path);
+        area.innerHTML = `<div class="image-wrap"><img src="${url}" alt="${name}"></div>`;
+        return;
+    }
+    if (data.kind === 'csv') {
+        const cols = data.columns || [];
+        const rows = data.rows || [];
+        area.innerHTML = `
+            <div style="padding:8px 0;font-size:11px;color:#64748b">${rows.length} rows · ${cols.length} cols (preview up to 500 rows)</div>
+            <div class="csv-wrap">
+            <table class="csv-table"><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${v===null?'':String(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        return;
+    }
+    if (data.kind === 'text') {
+        area.innerHTML = `<div class="text-view"></div>`;
+        area.firstChild.textContent = data.content || '';
+        return;
+    }
+    if (data.kind === 'markdown') {
+        area.innerHTML = `<div class="md-view">${naiveMD(data.content||'')}</div>`;
+        return;
+    }
+    if (data.kind === 'json') {
+        area.innerHTML = `<div class="json-view"></div>`;
+        area.firstChild.textContent = JSON.stringify(data.data, null, 2);
+        return;
+    }
+    area.innerHTML = `<div class="view-empty">No inline renderer for ${name}</div>`;
+}
+function naiveMD(s) {
+    s = (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const esc = /`([^`]+)`/g;
+    s = s.replace(esc, (_,c)=>`<code>${c}</code>`);
+    const lines = s.split('\n');
+    const out = []; let inCode=false; let code=[];
+    for (const l of lines) {
+        if (l.trim().startsWith('```')) { if (inCode){ out.push('<pre>'+code.join('\n')+'</pre>'); code=[]; inCode=false; } else inCode=true; continue; }
+        if (inCode) { code.push(l); continue; }
+        let line = l;
+        line = line.replace(/^###\s+(.+)$/,'<h3>$1</h3>');
+        line = line.replace(/^##\s+(.+)$/,'<h2>$1</h2>');
+        line = line.replace(/^#\s+(.+)$/,'<h1>$1</h1>');
+        line = line.replace(/^[-*]\s+/,'• ');
+        line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2">$1</a>');
+        line = line.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+        out.push(line);
+    }
+    return out.join('\n').split(/\n{2,}/).map(p=>{
+        if (/^<(h|pre)/.test(p.trim())) return p;
+        return '<p>'+p.replace(/\n/g,'<br>')+'</p>';
+    }).join('\n');
+}
+function downloadSelected() {
+    if (!currentFile) return;
+    const url = '/api/admin/workspace/download?root=' + encodeURIComponent(currentFile.root) + '&path=' + encodeURIComponent(currentFile.path) + '&attachment=1';
+    window.open(url,'_blank');
+}
+loadRoots();
+loadSummary();
+</script>
+{% endblock %}

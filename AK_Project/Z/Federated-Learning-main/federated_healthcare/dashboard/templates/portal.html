@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Federated Healthcare AI - Client Portal</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans flex flex-col justify-between">
+
+    <!-- Header Section -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 p-2 rounded-lg text-white">
+                    <i class="fa-solid fa-hospital-user text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white">Clinical Federated Learning Portal</h1>
+                    <p class="text-xs text-slate-400">Role-Based Access Control (RBAC) Client Node Entry</p>
+                </div>
+            </div>
+            <div>
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span class="w-2 h-2 mr-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Client Gateways Active
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full">
+
+        <!-- Server CLI Banner Notice -->
+        <div class="bg-indigo-950/40 border border-indigo-800/60 rounded-2xl p-6 mb-10 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-start space-x-4">
+                <div class="bg-indigo-600/20 text-indigo-400 p-3 rounded-xl border border-indigo-500/30 shrink-0">
+                    <i class="fa-solid fa-terminal text-2xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-white">Server Central Coordinator Execution</h2>
+                    <p class="text-xs text-slate-300 mt-1">
+                        The central Federated Learning Server runs independently via the <strong>Command Prompt / CLI</strong> (<code class="bg-slate-800 px-1.5 py-0.5 rounded text-indigo-300 font-mono">python demo_server.py</code>).
+                        Client hospital nodes execute local training individually through their respective web portals.
+                    </p>
+                </div>
+            </div>
+            <div class="shrink-0 bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl text-xs font-mono text-slate-400 flex items-center space-x-2">
+                <i class="fa-solid fa-server text-emerald-400"></i>
+                <span>Server Port: 8080</span>
+            </div>
+        </div>
+
+        <!-- Section Title -->
+        <div class="text-center mb-8">
+            <h2 class="text-2xl font-extrabold text-white tracking-tight">Select Isolated Client Hospital Gateway</h2>
+            <p class="text-sm text-slate-400 mt-1 max-w-xl mx-auto">Each hospital node operates in a dedicated, isolated browser tab equipped with local training and global model diagnostic verification capabilities.</p>
+        </div>
+
+        <!-- Hospital Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+
+            <!-- Hospital A Card -->
+            <div class="bg-slate-900 border border-slate-800 hover:border-indigo-500/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between transition group">
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="w-12 h-12 bg-indigo-600/10 text-indigo-400 rounded-xl flex items-center justify-center text-xl font-bold group-hover:scale-110 transition">
+                            <i class="fa-solid fa-hospital"></i>
+                        </div>
+                        <span class="text-xs font-mono bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full border border-slate-700">Node: Hospital_A</span>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white group-hover:text-indigo-400 transition">Hospital A Node</h3>
+                        <p class="text-xs text-slate-400 mt-1">Normal-Skewed Demographic Profile (1,000 Normal / 250 Pneumonia)</p>
+                    </div>
+
+                    <div class="space-y-2 border-t border-slate-800/80 pt-4 text-xs text-slate-300">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                            <span>Local PyTorch Training Loop Execution</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                            <span>Upload & Verify Global Diagnostics</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <a href="/hospital_a" target="_blank" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-3 px-4 rounded-xl transition flex items-center justify-center space-x-2 shadow-md">
+                        <span>Launch Hospital A Tab</span>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Hospital B Card -->
+            <div class="bg-slate-900 border border-slate-800 hover:border-indigo-500/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between transition group">
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="w-12 h-12 bg-indigo-600/10 text-indigo-400 rounded-xl flex items-center justify-center text-xl font-bold group-hover:scale-110 transition">
+                            <i class="fa-solid fa-hospital-user"></i>
+                        </div>
+                        <span class="text-xs font-mono bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full border border-slate-700">Node: Hospital_B</span>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white group-hover:text-indigo-400 transition">Hospital B Node</h3>
+                        <p class="text-xs text-slate-400 mt-1">Pneumonia-Skewed Demographic Profile (250 Normal / 1,000 Pneumonia)</p>
+                    </div>
+
+                    <div class="space-y-2 border-t border-slate-800/80 pt-4 text-xs text-slate-300">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                            <span>Local PyTorch Training Loop Execution</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                            <span>Upload & Verify Global Diagnostics</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <a href="/hospital_b" target="_blank" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-3 px-4 rounded-xl transition flex items-center justify-center space-x-2 shadow-md">
+                        <span>Launch Hospital B Tab</span>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Hospital C Card -->
+            <div class="bg-slate-900 border border-slate-800 hover:border-indigo-500/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between transition group">
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="w-12 h-12 bg-indigo-600/10 text-indigo-400 rounded-xl flex items-center justify-center text-xl font-bold group-hover:scale-110 transition">
+                            <i class="fa-solid fa-clinic-medical"></i>
+                        </div>
+                        <span class="text-xs font-mono bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full border border-slate-700">Node: Hospital_C</span>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white group-hover:text-indigo-400 transition">Hospital C Node</h3>
+                        <p class="text-xs text-slate-400 mt-1">Balanced Demographic Profile (500 Normal / 500 Pneumonia)</p>
+                    </div>
+
+                    <div class="space-y-2 border-t border-slate-800/80 pt-4 text-xs text-slate-300">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                            <span>Local PyTorch Training Loop Execution</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                            <span>Upload & Verify Global Diagnostics</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <a href="/hospital_c" target="_blank" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-3 px-4 rounded-xl transition flex items-center justify-center space-x-2 shadow-md">
+                        <span>Launch Hospital C Tab</span>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                    </a>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Analytics Restriction Notice -->
+        <div class="mt-12 bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-center max-w-2xl mx-auto">
+            <p class="text-xs text-slate-400">
+                <i class="fa-solid fa-lock text-amber-400 mr-1.5"></i>
+                <strong>Role Access Policy:</strong> Global model evaluation, aggregation graphs, and performance analytics are strictly reserved for the Central Server Administrator running on the command prompt.
+            </p>
+        </div>
+
+    </main>
+
+    <!-- Footer Area -->
+    <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 border-t border-slate-800 text-center text-xs text-slate-500">
+        Clinical Federated Learning Platform &copy; 2026. Powered by PyTorch & Flower FL Framework.
+    </footer>
+
+</body>
+</html>

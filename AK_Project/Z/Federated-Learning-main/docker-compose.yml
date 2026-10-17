@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  aggregator-server:
+    build: .
+    command: python src/server.py
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dashboard:/app/dashboard
+
+  hospital-a:
+    build: .
+    environment:
+      - SERVER_ADDRESS=aggregator-server:8080
+      - DATA_PATH=/app/data/hospital_A
+    depends_on:
+      - aggregator-server
+    volumes:
+      - ./data/hospital_A:/app/data/hospital_A
+
+  hospital-b:
+    build: .
+    environment:
+      - SERVER_ADDRESS=aggregator-server:8080
+      - DATA_PATH=/app/data/hospital_B
+    depends_on:
+      - aggregator-server
+    volumes:
+      - ./data/hospital_B:/app/data/hospital_B
+
+  hospital-c:
+    build: .
+    environment:
+      - SERVER_ADDRESS=aggregator-server:8080
+      - DATA_PATH=/app/data/hospital_C
+    depends_on:
+      - aggregator-server
+    volumes:
+      - ./data/hospital_C:/app/data/hospital_C
