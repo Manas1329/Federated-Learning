@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Federated Learning Aggregator Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .terminal-box::-webkit-scrollbar {
+            width: 8px;
+        }
+        .terminal-box::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        .terminal-box::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        .terminal-box::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <!-- Header Section -->
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 p-2 rounded-lg text-white">
+                    <i class="fa-solid fa-hospital-user text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white">Clinical Federated Learning Hub</h1>
+                    <p class="text-xs text-slate-400">Isolated Hospital Node Client Operations Dashboard</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-400/10 text-emerald-400 border border-emerald-500/20">
+                    <span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Web System Active
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Tab Navigation Navigation -->
+        <div class="border-b border-slate-800 mb-8">
+            <nav class="flex space-x-8" aria-label="Tabs">
+                <button onclick="switchTab('training-tab')" id="btn-training-tab" class="tab-btn border-indigo-500 text-indigo-400 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-microchip"></i>
+                    <span>1. Local Node Training Network</span>
+                </button>
+                <button onclick="switchTab('analytics-tab')" id="btn-analytics-tab" class="tab-btn border-transparent text-slate-400 hover:text-slate-300 hover:border-slate-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>2. Evaluation & Analytics Graphs</span>
+                </button>
+                <button onclick="switchTab('diagnostics-tab')" id="btn-diagnostics-tab" class="tab-btn border-transparent text-slate-400 hover:text-slate-300 hover:border-slate-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-stethoscope"></i>
+                    <span>3. Smart Clinical Diagnostics Hub</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- TAB 1: LOCAL NODE TRAINING NETWORK -->
+        <div id="training-tab" class="tab-content space-y-6">
+            <!-- Configuration Strip -->
+            <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-5 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Flower Server IP</label>
+                    <div class="relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                            <i class="fa-solid fa-network-wired"></i>
+                        </div>
+                        <input type="text" id="server-ip" value="127.0.0.1" class="block w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Port Address</label>
+                    <input type="text" id="server-port" value="8080" class="block w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div class="md:col-span-2">
+                    <p class="text-xs text-slate-400 mb-2">
+                        <i class="fa-solid fa-circle-info text-indigo-400 mr-1"></i>
+                        Clients run local training loops concurrently and push quantized model weight packets to the central coordinator aggregation server.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Terminal Cards Grid Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- HOSPITAL A TERMINAL -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col h-[520px] shadow-lg">
+                    <div class="bg-slate-850 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="flex h-2.5 w-2.5 relative">
+                                <span id="status-pulse-Hospital_A" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-500 opacity-75"></span>
+                                <span id="status-dot-Hospital_A" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-500"></span>
+                            </span>
+                            <span class="font-semibold text-sm text-slate-200">Hospital A Node</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="startTraining('Hospital_A')" id="btn-start-Hospital_A" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-1 rounded transition flex items-center space-x-1 shadow-sm">
+                                <i class="fa-solid fa-play text-[10px]"></i> <span>Start Node</span>
+                            </button>
+                            <button onclick="stopTraining('Hospital_A')" id="btn-stop-Hospital_A" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium px-2.5 py-1 rounded transition flex items-center space-x-1 shadow-sm">
+                                <i class="fa-solid fa-square text-[10px]"></i> <span>Terminate</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="terminal-Hospital_A" class="terminal-box p-4 flex-1 bg-slate-950 font-mono text-xs text-slate-300 overflow-y-auto space-y-1 select-text">
+                        <div class="text-slate-500 italic">Client console initialized. Ready to launch local training loop...</div>
+                    </div>
+                </div>
+
+                <!-- HOSPITAL B TERMINAL -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col h-[520px] shadow-lg">
+                    <div class="bg-slate-850 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="flex h-2.5 w-2.5 relative">
+                                <span id="status-pulse-Hospital_B" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-500 opacity-75"></span>
+                                <span id="status-dot-Hospital_B" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-500"></span>
+                            </span>
+                            <span class="font-semibold text-sm text-slate-200">Hospital B Node</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="startTraining('Hospital_B')" id="btn-start-Hospital_B" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-1 rounded transition flex items-center space-x-1 shadow-sm">
+                                <i class="fa-solid fa-play text-[10px]"></i> <span>Start Node</span>
+                            </button>
+                            <button onclick="stopTraining('Hospital_B')" id="btn-stop-Hospital_B" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium px-2.5 py-1 rounded transition flex items-center space-x-1 shadow-sm">
+                                <i class="fa-solid fa-square text-[10px]"></i> <span>Terminate</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="terminal-Hospital_B" class="terminal-box p-4 flex-1 bg-slate-950 font-mono text-xs text-slate-300 overflow-y-auto space-y-1 select-text">
+                        <div class="text-slate-500 italic">Client console initialized. Ready to launch local training loop...</div>
+                    </div>
+                </div>
+
+                <!-- HOSPITAL C TERMINAL -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col h-[520px] shadow-lg">
+                    <div class="bg-slate-850 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="flex h-2.5 w-2.5 relative">
+                                <span id="status-pulse-Hospital_C" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-500 opacity-75"></span>
+                                <span id="status-dot-Hospital_C" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-500"></span>
+                            </span>
+                            <span class="font-semibold text-sm text-slate-200">Hospital C Node</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="startTraining('Hospital_C')" id="btn-start-Hospital_C" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-1 rounded transition flex items-center space-x-1 shadow-sm">
+                                <i class="fa-solid fa-play text-[10px]"></i> <span>Start Node</span>
+                            </button>
+                            <button onclick="stopTraining('Hospital_C')" id="btn-stop-Hospital_C" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium px-2.5 py-1 rounded transition flex items-center space-x-1 shadow-sm">
+                                <i class="fa-solid fa-square text-[10px]"></i> <span>Terminate</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="terminal-Hospital_C" class="terminal-box p-4 flex-1 bg-slate-950 font-mono text-xs text-slate-300 overflow-y-auto space-y-1 select-text">
+                        <div class="text-slate-500 italic">Client console initialized. Ready to launch local training loop...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: EVALUATION & ANALYTICS GRAPHS -->
+        <div id="analytics-tab" class="tab-content hidden space-y-8">
+            <!-- Command Action Hub Panel -->
+            <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div class="space-y-1">
+                    <h3 class="text-base font-bold text-white">Aggregated Global Model Performance Hub</h3>
+                    <p class="text-xs text-slate-400">Trigger multi-hospital classification evaluation and regenerate modern comparison analytics figures.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button onclick="runEvaluation()" id="btn-run-eval" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm px-4 py-2 rounded-lg transition flex items-center space-x-2 shadow-sm">
+                        <i class="fa-solid fa-calculator"></i>
+                        <span>1. Evaluate Global Model</span>
+                    </button>
+                    <button onclick="generateGraphs()" id="btn-run-graphs" class="bg-teal-600 hover:bg-teal-500 text-white font-medium text-sm px-4 py-2 rounded-lg transition flex items-center space-x-2 shadow-sm">
+                        <i class="fa-solid fa-chart-pie"></i>
+                        <span>2. Generating Analysis Graphs</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Terminal Response Panel for Scripts -->
+            <div id="script-output-box" class="hidden bg-slate-950 border border-slate-850 rounded-xl p-4 font-mono text-xs text-slate-300 max-h-[220px] overflow-y-auto shadow-inner relative">
+                <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-2 right-3 text-slate-500 hover:text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+                <div class="font-semibold text-slate-400 uppercase tracking-wider mb-2 text-[10px] border-b border-slate-800 pb-1">Script Terminal Run Output Logs</div>
+                <pre id="script-output-text" class="whitespace-pre-wrap select-text"></pre>
+            </div>
+
+            <!-- Analysis Graphs Matrix Cards -->
+            <div class="space-y-6">
+                <h4 class="text-sm font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-2"><i class="fa-solid fa-images text-indigo-400 mr-1.5"></i> Generated Analytics & Evaluation Curves</h4>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Graph Card 1 -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col group">
+                        <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-200">Global Aggregator Optimization Accuracy</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 flex-1 flex items-center justify-center min-h-[220px]">
+                            <img id="img-accuracy" src="/plots/accuracy.png" onerror="this.src='https://placehold.co/600x400/1e293b/94a3b8?text=Click+Generate+Graphs+to+Render'" class="max-w-full max-h-[260px] object-contain rounded transition group-hover:scale-[1.01]">
+                        </div>
+                    </div>
+
+                    <!-- Graph Card 2 -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col group">
+                        <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-200">Global Training Cross-Entropy Loss Curve</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 flex-1 flex items-center justify-center min-h-[220px]">
+                            <img id="img-loss" src="/plots/loss.png" onerror="this.src='https://placehold.co/600x400/1e293b/94a3b8?text=Click+Generate+Graphs+to+Render'" class="max-w-full max-h-[260px] object-contain rounded transition group-hover:scale-[1.01]">
+                        </div>
+                    </div>
+
+                    <!-- Graph Card 3 -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col group">
+                        <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-200">Confusion Matrix (Validation Node)</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 flex-1 flex items-center justify-center min-h-[220px]">
+                            <img id="img-cm" src="/plots/confusion_matrix.png" onerror="this.src='https://placehold.co/600x400/1e293b/94a3b8?text=Click+Evaluate+Model+to+Render'" class="max-w-full max-h-[260px] object-contain rounded transition group-hover:scale-[1.01]">
+                        </div>
+                    </div>
+
+                    <!-- Graph Card 4 -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col group">
+                        <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-200">Receiver Operating Characteristic (ROC Curve)</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 flex-1 flex items-center justify-center min-h-[220px]">
+                            <img id="img-roc" src="/plots/roc_curve.png" onerror="this.src='https://placehold.co/600x400/1e293b/94a3b8?text=Click+Evaluate+Model+to+Render'" class="max-w-full max-h-[260px] object-contain rounded transition group-hover:scale-[1.01]">
+                        </div>
+                    </div>
+
+                    <!-- Graph Card 5 -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col group">
+                        <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-200">Cross-Hospital Generalization Accuracy Comparison</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 flex-1 flex items-center justify-center min-h-[220px]">
+                            <img id="img-comp-acc" src="/plots/comparison_accuracy.png" onerror="this.src='https://placehold.co/600x400/1e293b/94a3b8?text=Click+Generate+Graphs+to+Render'" class="max-w-full max-h-[260px] object-contain rounded transition group-hover:scale-[1.01]">
+                        </div>
+                    </div>
+
+                    <!-- Graph Card 6 -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col group">
+                        <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-200">Cross-Hospital F1-Score Performance Comparison</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 flex-1 flex items-center justify-center min-h-[220px]">
+                            <img id="img-comp-f1" src="/plots/comparison_f1.png" onerror="this.src='https://placehold.co/600x400/1e293b/94a3b8?text=Click+Generate+Graphs+to+Render'" class="max-w-full max-h-[260px] object-contain rounded transition group-hover:scale-[1.01]">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: SMART CLINICAL DIAGNOSTICS HUB -->
+        <div id="diagnostics-tab" class="tab-content hidden max-w-4xl mx-auto space-y-8">
+            <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5 shadow-sm text-center max-w-xl mx-auto">
+                <i class="fa-solid fa-shield-virus text-3xl text-indigo-400 mb-2"></i>
+                <h3 class="text-base font-bold text-white">Global Model Chest X-Ray Diagnostics Hub</h3>
+                <p class="text-xs text-slate-400 mt-1">Upload a patient's DICOM or chest X-ray image to perform instant neural network classification using the aggregated cloud federated global parameters model.</p>
+            </div>
+
+            <!-- Upload Drop Zone Box -->
+            <div class="bg-slate-900 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-8 text-center transition cursor-pointer relative shadow-md group" id="drop-zone">
+                <input type="file" id="image-file" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="previewAndUploadImage(this.files[0])">
+                <div class="space-y-3 pointer-events-none">
+                    <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto text-slate-400 group-hover:text-indigo-400 group-hover:bg-slate-700 transition">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-200">Drag & drop chest X-ray image here</p>
+                        <p class="text-xs text-slate-500 mt-1">Supports PNG, JPG, JPEG formatted clinical scans</p>
+                    </div>
+                    <button class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs px-3 py-1.5 rounded border border-slate-700">Browse Local Files</button>
+                </div>
+            </div>
+
+            <!-- Loading Spinner Spinner -->
+            <div id="predict-loading" class="hidden text-center py-6">
+                <i class="fa-solid fa-circle-notch text-3xl text-indigo-500 animate-spin mb-2"></i>
+                <p class="text-xs text-slate-400">Processing matrix image resizing & executing chest classification...</p>
+            </div>
+
+            <!-- Dashboard Diagnosis Outcome Panels -->
+            <div id="predict-result-card" class="hidden bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+                <!-- Preview -->
+                <div class="bg-slate-950 rounded-xl p-3 flex items-center justify-center border border-slate-800/80 min-h-[240px]">
+                    <img id="img-preview" src="#" class="max-w-full max-h-[260px] object-contain rounded shadow">
+                </div>
+                <!-- Metrics Report -->
+                <div class="flex flex-col justify-between space-y-4">
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Diagnostic Verdict</span>
+                            <span id="badge-model" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">global_model.pth</span>
+                        </div>
+
+                        <div class="flex items-baseline space-x-2">
+                            <h2 id="text-verdict" class="text-3xl font-extrabold tracking-tight">PNEUMONIA</h2>
+                            <span id="text-confidence" class="text-sm font-medium text-slate-400">(98.4% Confidence)</span>
+                        </div>
+
+                        <div id="verdict-banner" class="p-3 rounded-lg text-xs flex items-start space-x-2 bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                            <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                            <span id="verdict-desc">The neural networks model has flagged high features matching clinical pneumonia infiltration. High priority review suggested.</span>
+                        </div>
+                    </div>
+
+                    <!-- Probability Bars -->
+                    <div class="space-y-3">
+                        <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Probability Mapping Matrix</span>
+
+                        <div class="space-y-2">
+                            <div>
+                                <div class="flex justify-between text-xs font-medium mb-1">
+                                    <span class="text-slate-300">NORMAL</span>
+                                    <span id="prob-normal-text" class="font-semibold">1.6%</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="prob-normal-bar" class="bg-emerald-500 h-full transition-all duration-500" style="width: 1.6%"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between text-xs font-medium mb-1">
+                                    <span class="text-slate-300">PNEUMONIA</span>
+                                    <span id="prob-pneumonia-text" class="font-semibold">98.4%</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="prob-pneumonia-bar" class="bg-rose-500 h-full transition-all duration-500" style="width: 98.4%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Area -->
+    <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-12 border-t border-slate-800 text-center text-xs text-slate-500">
+        Clinical Aggregator Hub &copy; 2026. Powered by Flower Federated Learning System Framework & PyTorch Core Engine.
+    </footer>
+
+    <!-- JavaScript Logic Interactivity -->
+    <script>
+        // Event sources object for SSE tracking
+        const eventSources = {};
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('border-indigo-500', 'text-indigo-400');
+                btn.classList.add('border-transparent', 'text-slate-400');
+            });
+            document.getElementById('btn-' + tabId).classList.remove('border-transparent', 'text-slate-400');
+            document.getElementById('btn-' + tabId).classList.add('border-indigo-500', 'text-indigo-400');
+        }
+
+        function startTraining(clientId) {
+            const serverIp = document.getElementById('server-ip').value;
+            const port = document.getElementById('server-port').value;
+            const terminal = document.getElementById('terminal-' + clientId);
+
+            terminal.innerHTML = `<div class="text-amber-400"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Requesting background container worker thread creation...</div>`;
+
+            // Adjust badges UX
+            document.getElementById('btn-start-' + clientId).classList.add('hidden');
+            document.getElementById('btn-stop-' + clientId).classList.remove('hidden');
+            document.getElementById('status-dot-' + clientId).className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500';
+            document.getElementById('status-pulse-' + clientId).className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75';
+
+            fetch('/api/start_training', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: clientId, server_ip: serverIp, port: port })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    // Start SSE Line streaming stream
+                    setupLogStream(clientId);
+                } else {
+                    terminal.innerHTML = `<div class="text-rose-500 font-semibold"><i class="fa-solid fa-circle-xmark mr-1"></i> Error: ${data.message}</div>`;
+                    resetNodeUI(clientId);
+                }
+            })
+            .catch(err => {
+                terminal.innerHTML = `<div class="text-rose-500 font-semibold"><i class="fa-solid fa-circle-xmark mr-1"></i> System Fetch Failure.</div>`;
+                resetNodeUI(clientId);
+            });
+        }
+
+        function stopTraining(clientId) {
+            fetch('/api/stop_training', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: clientId })
+            }).then(() => {
+                if(eventSources[clientId]) {
+                    eventSources[clientId].close();
+                    delete eventSources[clientId];
+                }
+                resetNodeUI(clientId);
+            });
+        }
+
+        function resetNodeUI(clientId) {
+            document.getElementById('btn-start-' + clientId).classList.remove('hidden');
+            document.getElementById('btn-stop-' + clientId).classList.add('hidden');
+            document.getElementById('status-dot-' + clientId).className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-500';
+            document.getElementById('status-pulse-' + clientId).className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-500 opacity-75';
+        }
+
+        function setupLogStream(clientId) {
+            if(eventSources[clientId]) {
+                eventSources[clientId].close();
+            }
+
+            const terminal = document.getElementById('terminal-' + clientId);
+            terminal.innerHTML = ''; // clear initial indicators
+
+            document.getElementById('status-dot-' + clientId).className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500';
+            document.getElementById('status-pulse-' + clientId).className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75';
+
+            const source = new EventSource('/api/stream_logs/' + clientId);
+            eventSources[clientId] = source;
+
+            source.onmessage = function(event) {
+                if (event.data === ':heartbeat') return;
+
+                const div = document.createElement('div');
+                let lineText = event.data;
+
+                // Color decorations based on keywords for premium feel
+                if (lineText.includes('Epoch') || lineText.includes('Federated Round')) {
+                    div.className = 'text-cyan-400 font-semibold border-l-2 border-cyan-500 pl-1.5 my-1';
+                } else if (lineText.includes('Loss:') || lineText.includes('Accuracy:')) {
+                    div.className = 'text-emerald-400 bg-emerald-500/5 px-1 py-0.5 rounded my-0.5';
+                } else if (lineText.includes('ERROR') || lineText.includes('Exit Code 1')) {
+                    div.className = 'text-rose-400 bg-rose-500/10 px-1 py-0.5 rounded my-0.5';
+                } else if (lineText.includes('Finished') || lineText.includes('COMPLETED')) {
+                    div.className = 'text-indigo-400 font-bold';
+                    resetNodeUI(clientId);
+                    source.close();
+                } else {
+                    div.className = 'text-slate-300';
+                }
+
+                div.textContent = lineText;
+                terminal.appendChild(div);
+                terminal.scrollTop = terminal.scrollHeight;
+            };
+
+            source.onerror = function() {
+                // Connection might drop if script exits
+                resetNodeUI(clientId);
+                source.close();
+            };
+        }
+
+        function runEvaluation() {
+            const outBox = document.getElementById('script-output-box');
+            const outText = document.getElementById('script-output-text');
+            const btn = document.getElementById('btn-run-eval');
+
+            outBox.classList.remove('hidden');
+            outText.innerHTML = `<span class="text-amber-400"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Running evaluate.py and comparison.py script routines on global model tensors...</span>`;
+            btn.disabled = true;
+
+            fetch('/api/evaluate', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                if(data.status === 'success') {
+                    outText.textContent = data.output;
+                    // Refresh images with cache busting
+                    document.getElementById('img-cm').src = '/plots/confusion_matrix.png?b=' + Date.now();
+                    document.getElementById('img-roc').src = '/plots/roc_curve.png?b=' + Date.now();
+                } else {
+                    outText.innerHTML = `<span class="text-rose-500">Error executing script: ${data.message}</span>`;
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                outText.innerHTML = `<span class="text-rose-500">Network fetch communication error.</span>`;
+            });
+        }
+
+        function generateGraphs() {
+            const outBox = document.getElementById('script-output-box');
+            const outText = document.getElementById('script-output-text');
+            const btn = document.getElementById('btn-run-graphs');
+
+            outBox.classList.remove('hidden');
+            outText.innerHTML = `<span class="text-amber-400"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Running graph.py figure rendering routine...</span>`;
+            btn.disabled = true;
+
+            fetch('/api/generate_graphs', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                if(data.status === 'success') {
+                    outText.textContent = data.output;
+                    // Refresh images with cache busting
+                    document.getElementById('img-accuracy').src = '/plots/accuracy.png?b=' + Date.now();
+                    document.getElementById('img-loss').src = '/plots/loss.png?b=' + Date.now();
+                    document.getElementById('img-comp-acc').src = '/plots/comparison_accuracy.png?b=' + Date.now();
+                    document.getElementById('img-comp-f1').src = '/plots/comparison_f1.png?b=' + Date.now();
+                } else {
+                    outText.innerHTML = `<span class="text-rose-500">Error executing script: ${data.message}</span>`;
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                outText.innerHTML = `<span class="text-rose-500">Network fetch communication error.</span>`;
+            });
+        }
+
+        function previewAndUploadImage(file) {
+            if (!file) return;
+
+            // Show preview image locally
+            const reader = new FileReader();
+            const previewImg = document.getElementById('img-preview');
+            reader.onload = function(e) {
+                previewImg.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+
+            // Trigger API model request
+            const loading = document.getElementById('predict-loading');
+            const card = document.getElementById('predict-result-card');
+
+            loading.classList.remove('hidden');
+            card.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            fetch('/api/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                loading.classList.add('hidden');
+                if (data.status === 'success') {
+                    card.classList.remove('hidden');
+                    const res = data.result;
+
+                    document.getElementById('badge-model').textContent = res.model_used;
+                    document.getElementById('text-verdict').textContent = res.prediction;
+                    document.getElementById('text-confidence').textContent = `(${(res.confidence * 100).toFixed(1)}% Confidence)`;
+
+                    const normalPct = (res.probabilities.NORMAL * 100).toFixed(1) + '%';
+                    const pneumoniaPct = (res.probabilities.PNEUMONIA * 100).toFixed(1) + '%';
+
+                    document.getElementById('prob-normal-text').textContent = normalPct;
+                    document.getElementById('prob-normal-bar').style.width = normalPct;
+
+                    document.getElementById('prob-pneumonia-text').textContent = pneumoniaPct;
+                    document.getElementById('prob-pneumonia-bar').style.width = pneumoniaPct;
+
+                    const banner = document.getElementById('verdict-banner');
+                    const desc = document.getElementById('verdict-desc');
+
+                    if (res.prediction === 'PNEUMONIA') {
+                        document.getElementById('text-verdict').className = 'text-3xl font-extrabold tracking-tight text-rose-500';
+                        banner.className = 'p-3 rounded-lg text-xs flex items-start space-x-2 bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                        desc.textContent = 'The neural networks global model has matched typical infiltration opacities matching clinical pneumonia. High priority medical review recommended.';
+                    } else {
+                        document.getElementById('text-verdict').className = 'text-3xl font-extrabold tracking-tight text-emerald-500';
+                        banner.className = 'p-3 rounded-lg text-xs flex items-start space-x-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                        desc.textContent = 'Clear pulmonary visual mapping. No consolidations or significant focal opacities matching pneumonia are recognized by the model weights.';
+                    }
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(() => {
+                loading.classList.add('hidden');
+                alert('Server inference call failed.');
+            });
+        }
+
+        // Drag and drop setup handlers
+        const dropZone = document.getElementById('drop-zone');
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-indigo-500', 'bg-slate-800/40');
+            }, false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-indigo-500', 'bg-slate-800/40');
+            }, false);
+        });
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            previewAndUploadImage(files[0]);
+        }, false);
+    </script>
+</body>
+</html>
