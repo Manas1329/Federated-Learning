@@ -141,24 +141,101 @@ Open 4 separate terminal windows:
 
 ---
 
-## 📈 Monitoring & Graphing
+---
 
-### 1. Real-Time Streamlit Dashboard
-Launch the monitoring dashboard to observe training convergence in real-time:
-```bash
-streamlit run federated_healthcare/dashboard/app.py
-```
-### 2. Evaluating the Global Model
-Evaluate the final global model checkpoint against the test set:
+## 📈 Monitoring, Validation & Graphing Commands
+
+### 1. Model Validation & Diagnostic Commands
+
+#### **A. Evaluate Global Model Benchmark (`evaluate.py`)**
+Evaluates the latest global model against held-out clinical test sets (Accuracy, Precision, Recall, F1, ROC-AUC, PR-AUC, Confusion Matrix):
 ```bash
 venv\Scripts\python.exe federated_healthcare\src\evaluate.py
 ```
 
-### 3. Generating Analysis Graphs
-Compile all raw CSV results into structured visualizations and a final comparison summary:
+#### **B. Non-IID vs Centralized Cross-Hospital Generalization (`evaluate_comparison.py`)**
+Evaluates out-of-distribution performance across all hospital splits (Hospital A, Hospital B, Hospital C):
 ```bash
-venv\Scripts\python.exe federated_healthcare\src\graph.py
+venv\Scripts\python.exe federated_healthcare\src\evaluate_comparison.py
 ```
+
+#### **C. 3-Stage Federated Unlearning & DACM Verification (`evaluate_unlearning.py`)**
+Evaluates model utility before unlearning, after gradient-ascent target erasure, and post-DACM recovery:
+```bash
+venv\Scripts\python.exe federated_healthcare\src\evaluate_unlearning.py
+```
+
+#### **D. Run Automated Unit Test Suite (`pytest`)**
+Runs unit test suites covering the dropout engine, proxy locks, and quorum protection:
+```bash
+venv\Scripts\pytest.exe federated_healthcare\src\tests
+```
+
+---
+
+### 2. Comprehensive 6-Category Graph Generation Commands
+
+To generate all 6 publication-grade graph suites across all categories in a single command, run the **Master Graph Suite**:
+
+```bash
+venv\Scripts\python.exe federated_healthcare\src\generate_all_graphs.py
+```
+
+#### **Individual Category Graph Generation Commands**:
+
+* **Category 1: Global Model Optimization & Convergence Curves**
+  * Generates `accuracy.png`, `loss.png`, and `train_val_curves.png` (Training vs Validation Accuracy & Loss):
+  ```bash
+  venv\Scripts\python.exe federated_healthcare\src\graph.py
+  ```
+
+* **Category 2: Non-IID Data & Cross-Hospital Generalization**
+  * Generates non-IID accuracy, F1, confusion matrices, and ROC comparison plots:
+  ```bash
+  venv\Scripts\python.exe federated_healthcare\src\evaluate_comparison.py
+  ```
+
+* **Category 3: Communication & Payload Efficiency**
+  * Generates average payload size and cumulative network data transfer comparisons across modes:
+  ```bash
+  venv\Scripts\python.exe federated_healthcare\src\comparison_graph.py
+  ```
+
+* **Category 4: Differential Privacy & Trade-Off Analysis**
+  * Generates Privacy Budget ($\epsilon$) growth curves and Privacy-Accuracy Trade-off charts:
+  ```bash
+  venv\Scripts\python.exe federated_healthcare\src\generate_all_graphs.py
+  ```
+
+* **Category 5: Distributed Fault Tolerance & Adaptive Dropout**
+  * Generates straggler completion predictions, hard deadline responses, and operational outcome charts:
+  ```bash
+  venv\Scripts\python.exe federated_healthcare\src\scripts\generate_figures.py
+  ```
+
+* **Category 6: Client Trust & Federated Unlearning (DACM)**
+  * Generates non-IID client trust score trajectories and 3-stage post-unlearning recovery charts:
+  ```bash
+  venv\Scripts\python.exe federated_healthcare\src\generate_all_graphs.py
+  ```
+
+---
+
+### 3. Real-Time Web Interfaces & Dashboards
+
+* **Flask Role-Based Client Portals (Local Training + Upload & Verify)**:
+  ```bash
+  venv\Scripts\python.exe federated_healthcare\dashboard\web_server.py
+  ```
+  * Access Gateway Portal: `http://localhost:5000/`
+  * Hospital A Tab: `http://localhost:5000/hospital_a`
+  * Hospital B Tab: `http://localhost:5000/hospital_b`
+  * Hospital C Tab: `http://localhost:5000/hospital_c`
+
+* **Streamlit Monitoring Dashboard**:
+  ```bash
+  streamlit run federated_healthcare/dashboard/app.py
+  ```
 
 ---
 

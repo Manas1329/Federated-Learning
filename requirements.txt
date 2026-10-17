@@ -16,3 +16,7 @@ numpy==1.26.4
 scikit-learn==1.9.0
 opacus==1.4.1
 opt_einsum==3.4.0
+flask
+pillow
+torch
+torchvision
