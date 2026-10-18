@@ -86,8 +86,8 @@ def run_comparison():
         print(f"Error: Global model not found at {GLOBAL_MODEL_PATH}. Run FL server first.")
         return
 
-    local_model.load_state_dict(torch.load(LOCAL_MODEL_PATH, map_location=device))
-    global_model.load_state_dict(torch.load(GLOBAL_MODEL_PATH, map_location=device))
+    local_model.load_state_dict(torch.load(LOCAL_MODEL_PATH, map_location=device), strict=False)
+    global_model.load_state_dict(torch.load(GLOBAL_MODEL_PATH, map_location=device), strict=False)
     print("Models loaded successfully.")
 
     # 2. Load Datasets

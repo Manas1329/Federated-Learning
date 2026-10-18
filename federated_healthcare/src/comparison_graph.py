@@ -111,7 +111,9 @@ for label, suffix in configs.items():
                 df = pd.read_csv(
                     os.path.join(results_dir, f),
                     header=None,
-                    skiprows=1
+                    skiprows=1,
+                    names=list(range(20)),
+                    on_bad_lines='skip'
                 )
 
                 # Filter training rows

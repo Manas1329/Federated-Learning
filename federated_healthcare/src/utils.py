@@ -63,9 +63,27 @@ from torchvision import datasets, transforms
 
 from pathlib import Path
 
+class TransformedSubset(torch.utils.data.Dataset):
+    """
+    Dataset wrapper to apply split-specific transforms to a PyTorch Subset.
+    """
+    def __init__(self, subset, transform=None):
+        self.subset = subset
+        self.transform = transform
+
+    def __getitem__(self, index):
+        x, y = self.subset[index]
+        if self.transform:
+            x = self.transform(x)
+        return x, y
+
+    def __len__(self):
+        return len(self.subset)
+
+
 def load_hospital_data(data_path, batch_size=32, img_size=128):
     """
-    Load chest X-ray images from hospital-specific folder structure.
+    Load chest X-ray images from hospital-specific folder structure with medical-safe augmentations.
 
     Expected folder structure:
         data_path/
@@ -79,27 +97,39 @@ def load_hospital_data(data_path, batch_size=32, img_size=128):
 
     train_path = Path(data_path) / "train"
 
-    transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1),
-        transforms.Resize((img_size, img_size)),
-        transforms.ToTensor(),
-    ])
-
-    # Load the complete dataset
-    full_dataset = datasets.ImageFolder(
-        root=train_path,
-        transform=transform
-    )
+    # Load raw dataset without transforms to apply split-specific pipelines
+    full_dataset = datasets.ImageFolder(root=train_path)
 
     # Split into 80% training and 20% testing
     train_size = int(0.8 * len(full_dataset))
     test_size = len(full_dataset) - train_size
 
-    train_dataset, test_dataset = random_split(
+    train_subset, test_subset = random_split(
         full_dataset,
         [train_size, test_size],
         generator=torch.Generator().manual_seed(42)
     )
+
+    # Medical-safe training data augmentation pipeline
+    train_transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.Resize((img_size, img_size)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=8),
+        transforms.RandomAffine(degrees=0, translate=(0.04, 0.04), scale=(0.96, 1.04)),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1),
+        transforms.ToTensor(),
+    ])
+
+    # Unaugmented test evaluation pipeline
+    test_transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+    ])
+
+    train_dataset = TransformedSubset(train_subset, transform=train_transform)
+    test_dataset = TransformedSubset(test_subset, transform=test_transform)
 
     trainloader = DataLoader(
         train_dataset,
@@ -113,7 +143,22 @@ def load_hospital_data(data_path, batch_size=32, img_size=128):
         shuffle=False
     )
 
-    print(f"Loaded {len(train_dataset)} training samples")
-    print(f"Loaded {len(test_dataset)} testing samples")
+    print(f"Loaded {len(train_dataset)} training samples (augmented)")
+    print(f"Loaded {len(test_dataset)} testing samples (unaugmented)")
 
     return trainloader, testloader
+
+
+def load_partitions(client_id="Hospital_A", batch_size=32):
+    """
+    Load data partitions for a hospital client.
+    Returns: trainloader, testloader, num_examples
+    """
+    from paths import resolve_data_path
+    data_path = resolve_data_path(None, client_id)
+    trainloader, testloader = load_hospital_data(data_path, batch_size=batch_size)
+    num_examples = {
+        "trainset": len(trainloader.dataset),
+        "testset": len(testloader.dataset)
+    }
+    return trainloader, testloader, num_examples

@@ -17,7 +17,7 @@ SCRIPTS_DIR = SRC_DIR / "scripts"
 TESTS_DIR = SRC_DIR / "tests"
 
 # Core Directories
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = FEDERATED_HEALTHCARE_DIR / "data" if (FEDERATED_HEALTHCARE_DIR / "data").exists() else PROJECT_ROOT / "data"
 MODELS_DIR = FEDERATED_HEALTHCARE_DIR / "models"
 DASHBOARD_DIR = FEDERATED_HEALTHCARE_DIR / "dashboard"
 

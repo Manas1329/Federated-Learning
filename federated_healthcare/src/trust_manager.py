@@ -27,9 +27,15 @@ Usage in server.py:
     # evaluate_agg_fn  : tm.record_evaluation(...), tm.finalize_round(round)
 """
 
+import sys
 import csv
 import os
 import time
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -80,9 +86,9 @@ TAG_DISPLAY = {
 }
 
 TAG_EMOJI = {
-    "TRUSTED":    "🟢 TRUSTED",
-    "SUSPICIOUS": "🟡 SUSPICIOUS",
-    "UNTRUSTED":  "🔴 UNTRUSTED",
+    "TRUSTED":    "[TRUSTED]",
+    "SUSPICIOUS": "[SUSPICIOUS]",
+    "UNTRUSTED":  "[UNTRUSTED]",
 }
 
 
