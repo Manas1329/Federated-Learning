@@ -1,7 +1,12 @@
+import sys
+import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from opacus import PrivacyEngine
+
+# Suppress PyTorch/Opacus per-sample gradient backward hook deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

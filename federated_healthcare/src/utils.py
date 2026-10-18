@@ -110,14 +110,12 @@ def load_hospital_data(data_path, batch_size=32, img_size=128):
         generator=torch.Generator().manual_seed(42)
     )
 
-    # Medical-safe training data augmentation pipeline
+    # Medical-safe fast training data augmentation pipeline
     train_transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((img_size, img_size)),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(degrees=8),
-        transforms.RandomAffine(degrees=0, translate=(0.04, 0.04), scale=(0.96, 1.04)),
-        transforms.ColorJitter(brightness=0.1, contrast=0.1),
         transforms.ToTensor(),
     ])
 

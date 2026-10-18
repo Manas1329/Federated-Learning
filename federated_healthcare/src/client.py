@@ -1,5 +1,9 @@
 import sys
 import os
+import warnings
+
+# Suppress PyTorch/Opacus per-sample gradient backward hook deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -113,12 +117,12 @@ print(f"[{CLIENT_NAME}] Using device: {device}")
 net = ChestCNN().to(device)
 
 
-# --------------------------------------------------
-# Data
-# --------------------------------------------------
+# Limit CPU thread oversubscription when multiple clients run concurrently
+if not torch.cuda.is_available():
+    torch.set_num_threads(2)
 
 if USE_DP:
-    trainloader, testloader = load_hospital_data(DATA_PATH, batch_size=4)
+    trainloader, testloader = load_hospital_data(DATA_PATH, batch_size=32)
     
     from opacus import PrivacyEngine
     import torch.optim as optim
