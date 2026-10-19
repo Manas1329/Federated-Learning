@@ -368,6 +368,17 @@ def main():
     for p in generated_files:
         print(f"  - {p}")
     print("=" * 70)
+    
+    html_gallery = PLOTS_DIR / "view_all_graphs.html"
+    if html_gallery.exists():
+        print(f"\n[INFO] To view all plots interactively in your browser, open:")
+        print(f"       {html_gallery}")
+        
+        # Open in default browser if requested or on Windows
+        if "--open" in sys.argv:
+            import webbrowser
+            webbrowser.open(str(html_gallery.resolve()))
 
 if __name__ == "__main__":
     main()
+

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Federated Healthcare AI — Master Graph Gallery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .lightbox-modal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            inset: 0;
+            background: rgba(10, 15, 29, 0.92);
+            backdrop-filter: blur(8px);
+            justify-content: center;
+            align-items: center;
+        }
+        .lightbox-modal.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans selection:bg-indigo-500 selection:text-white">
+
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-500/20 text-white">
+                    <i class="fa-solid fa-chart-line text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                        Federated Healthcare AI
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">Analytics Suite</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Master Publication & Evaluation Graph Gallery</p>
+                </div>
+            </div>
+
+            <!-- Category Filter Tabs -->
+            <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                <button onclick="filterCategory('all')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-indigo-600 text-white" data-cat="all">All Graphs</button>
+                <button onclick="filterCategory('opt')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-cat="opt">1. Optimization</button>
+                <button onclick="filterCategory('non_iid')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-cat="non_iid">2. Non-IID Generalization</button>
+                <button onclick="filterCategory('payload')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-cat="payload">3. Payload & Comms</button>
+                <button onclick="filterCategory('dp')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-cat="dp">4. Privacy & DP</button>
+                <button onclick="filterCategory('fault')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-cat="fault">5. Fault Tolerance</button>
+                <button onclick="filterCategory('trust')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-cat="trust">6. Trust & Unlearning</button>
+                <button onclick="filterCategory('runs')" class="cat-btn px-3 py-1.5 rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-cat="runs">Run Diagnostics</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-6 py-8">
+        
+        <!-- Category 1: Global Model Optimization & Convergence -->
+        <section class="section-group mb-12" data-section="opt">
+            <div class="flex items-center gap-3 border-b border-slate-800 pb-3 mb-6">
+                <div class="w-2.5 h-6 bg-indigo-500 rounded-sm"></div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">1. Global Model Optimization & Convergence Curves</h2>
+                    <p class="text-xs text-slate-400">Pure FP32, Quantized INT8, and Differential Privacy (DP-SGD) federated convergence trajectories.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- FP32 Accuracy -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('a_pure/accuracy.png', 'Global Convergence Accuracy — Pure FP32')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Pure FP32 Accuracy</span>
+                        <span class="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Pure</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="a_pure/accuracy.png" alt="Pure Accuracy" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- Quantized Accuracy -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('b_quantized/accuracy.png', 'Global Convergence Accuracy — Quantized INT8')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Quantized INT8 Accuracy</span>
+                        <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Quantized</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="b_quantized/accuracy.png" alt="Quantized Accuracy" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- DP Accuracy -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('c_dp/accuracy.png', 'Global Convergence Accuracy — Quantized + DP')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Quantized + DP Accuracy</span>
+                        <span class="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded border border-amber-500/20">DP-SGD</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="c_dp/accuracy.png" alt="DP Accuracy" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- FP32 Loss -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('a_pure/loss.png', 'Cross-Entropy Loss Curve — Pure FP32')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Pure FP32 Loss</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="a_pure/loss.png" alt="Pure Loss" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- Quantized Loss -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('b_quantized/loss.png', 'Cross-Entropy Loss Curve — Quantized INT8')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Quantized INT8 Loss</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="b_quantized/loss.png" alt="Quantized Loss" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- DP Loss -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('c_dp/loss.png', 'Cross-Entropy Loss Curve — Quantized + DP')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Quantized + DP Loss</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="c_dp/loss.png" alt="DP Loss" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- Train vs Val Combined -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('a_pure/train_val_curves.png', 'Train vs Validation Curves — Pure FP32')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Pure FP32 Train vs Val</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="a_pure/train_val_curves.png" alt="Pure Train Val" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('b_quantized/train_val_curves.png', 'Train vs Validation Curves — Quantized INT8')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Quantized INT8 Train vs Val</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="b_quantized/train_val_curves.png" alt="Quantized Train Val" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('c_dp/train_val_curves.png', 'Train vs Validation Curves — DP')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Quantized + DP Train vs Val</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[220px]">
+                        <img src="c_dp/train_val_curves.png" alt="DP Train Val" class="max-h-56 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Category 2: Non-IID & Cross-Hospital Generalization -->
+        <section class="section-group mb-12" data-section="non_iid">
+            <div class="flex items-center gap-3 border-b border-slate-800 pb-3 mb-6">
+                <div class="w-2.5 h-6 bg-cyan-500 rounded-sm"></div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">2. Non-IID Data & Cross-Hospital Generalization</h2>
+                    <p class="text-xs text-slate-400">Evaluation demonstrating superior performance of Global Federated model over isolated local models across heterogeneous hospital distributions.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('comparisons/non_iid/non_iid_study_accuracy.png', 'Non-IID Cross-Hospital Accuracy Comparison')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Cross-Hospital Accuracy</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="comparisons/non_iid/non_iid_study_accuracy.png" alt="Non-IID Accuracy" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('comparisons/non_iid/non_iid_study_f1.png', 'Non-IID Cross-Hospital F1-Score Comparison')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Cross-Hospital F1-Score</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="comparisons/non_iid/non_iid_study_f1.png" alt="Non-IID F1" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('comparisons/non_iid/non_iid_study_cm_hosp_B.png', 'Hospital B Confusion Matrix Comparison (Local vs Global)')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Hospital B Confusion Matrix</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="comparisons/non_iid/non_iid_study_cm_hosp_B.png" alt="Hospital B CM" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('comparisons/non_iid/non_iid_study_roc_hosp_B.png', 'Hospital B ROC Curve Comparison (Local vs Global)')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Hospital B ROC Comparison</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="comparisons/non_iid/non_iid_study_roc_hosp_B.png" alt="Hospital B ROC" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Category 3: Communication & Payload Efficiency -->
+        <section class="section-group mb-12" data-section="payload">
+            <div class="flex items-center gap-3 border-b border-slate-800 pb-3 mb-6">
+                <div class="w-2.5 h-6 bg-emerald-500 rounded-sm"></div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">3. Communication & Payload Efficiency</h2>
+                    <p class="text-xs text-slate-400">Comparing per-round and cumulative bandwidth usage between unquantized FP32 and INT8 quantized communications.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('comparisons/payload_comparison.png', 'Per-Round Payload Footprint Comparison')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Per-Round Model Payload Size (MB)</span>
+                        <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">~75% Compression</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[240px]">
+                        <img src="comparisons/payload_comparison.png" alt="Payload Comparison" class="max-h-64 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('comparisons/cumulative_payload_comparison.png', 'Cumulative Bandwidth Consumption Trajectory')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-200">Cumulative Network Transfer (MB)</span>
+                        <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Bandwidth Optimized</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[240px]">
+                        <img src="comparisons/cumulative_payload_comparison.png" alt="Cumulative Payload Comparison" class="max-h-64 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Category 4: Differential Privacy & Trade-Off Analysis -->
+        <section class="section-group mb-12" data-section="dp">
+            <div class="flex items-center gap-3 border-b border-slate-800 pb-3 mb-6">
+                <div class="w-2.5 h-6 bg-purple-500 rounded-sm"></div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">4. Differential Privacy & Trade-Off Analysis</h2>
+                    <p class="text-xs text-slate-400">Formal privacy budget (ε) consumption growth via Renyi Differential Privacy and accuracy-privacy Pareto trade-offs.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('privacy/privacy_budget_growth.png', 'Cumulative Privacy Budget Growth (Epsilon)')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Privacy Budget (ε) Growth</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[240px]">
+                        <img src="privacy/privacy_budget_growth.png" alt="Privacy Budget Growth" class="max-h-64 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('privacy/privacy_accuracy_tradeoff.png', 'Differential Privacy vs Model Accuracy Trade-Off Curve')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Privacy vs Accuracy Trade-off</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[240px]">
+                        <img src="privacy/privacy_accuracy_tradeoff.png" alt="Privacy vs Accuracy Trade-off" class="max-h-64 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Category 5: Distributed Fault Tolerance & Adaptive Dropout -->
+        <section class="section-group mb-12" data-section="fault">
+            <div class="flex items-center gap-3 border-b border-slate-800 pb-3 mb-6">
+                <div class="w-2.5 h-6 bg-pink-500 rounded-sm"></div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">5. Distributed Fault Tolerance & Adaptive Dropout</h2>
+                    <p class="text-xs text-slate-400">Resilience under heterogeneous client dropouts, stragglers, and dynamic client sub-selection.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-slate-900 border border-slate-800 hover:border-pink-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('figures/fig1_final_accuracy.png', 'Final Global Accuracy under Dropout')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Fig 1: Final Accuracy</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="figures/fig1_final_accuracy.png" alt="Fig 1" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-pink-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('figures/fig2_client_round_outcomes.png', 'Client Round Outcomes Distribution')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Fig 2: Client Selection</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="figures/fig2_client_round_outcomes.png" alt="Fig 2" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-pink-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('figures/fig3_adaptive_decision_response.png', 'Adaptive Decision Response')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Fig 3: Adaptive Dropout</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="figures/fig3_adaptive_decision_response.png" alt="Fig 3" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-pink-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('figures/fig4_nonstationary_hospital_c.png', 'Non-Stationary Hospital C Dynamics')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Fig 4: Non-Stationary Dynamics</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="figures/fig4_nonstationary_hospital_c.png" alt="Fig 4" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Category 6: Client Trust & Federated Unlearning -->
+        <section class="section-group mb-12" data-section="trust">
+            <div class="flex items-center gap-3 border-b border-slate-800 pb-3 mb-6">
+                <div class="w-2.5 h-6 bg-amber-500 rounded-sm"></div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">6. Client Trust Scores & Federated Unlearning (DACM)</h2>
+                    <p class="text-xs text-slate-400">Zero-overhead federated unlearning trajectory and dynamic cosine trust score reputation trajectories.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('trust/trust_scores_trajectory.png', 'Client Trust Score Trajectory across FL Rounds')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Hospital Trust Score Trajectories</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[240px]">
+                        <img src="trust/trust_scores_trajectory.png" alt="Trust Scores" class="max-h-64 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('unlearning/unlearning_dacm_recovery.png', 'Federated Unlearning DACM Recovery Trajectory')">
+                    <div class="p-3.5 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Federated Unlearning (DACM) Recovery</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[240px]">
+                        <img src="unlearning/unlearning_dacm_recovery.png" alt="Unlearning DACM" class="max-h-64 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Category 7: Specific Run Diagnostics (ROC, PR Curve, CM) -->
+        <section class="section-group mb-12" data-section="runs">
+            <div class="flex items-center gap-3 border-b border-slate-800 pb-3 mb-6">
+                <div class="w-2.5 h-6 bg-blue-500 rounded-sm"></div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">Specific Run Diagnostic Curves (ROC, PR Curve, Confusion Matrix)</h2>
+                    <p class="text-xs text-slate-400">Detailed clinical evaluation curves produced from the test dataset.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Confusion Matrix -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('b_quantized/confusion_matrix.png', 'Quantized Model Confusion Matrix')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Confusion Matrix (Quantized)</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="b_quantized/confusion_matrix.png" alt="CM" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- ROC Curve -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('b_quantized/roc_curve.png', 'Receiver Operating Characteristic (ROC Curve)')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">ROC Curve (Quantized)</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="b_quantized/roc_curve.png" alt="ROC" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- PR Curve -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('b_quantized/pr_curve.png', 'Precision-Recall Curve')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Precision-Recall Curve</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="b_quantized/pr_curve.png" alt="PR" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+
+                <!-- Predictions -->
+                <div class="bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-xl overflow-hidden shadow-lg transition flex flex-col group cursor-pointer" onclick="openLightbox('b_quantized/predictions.png', 'Model Predictions vs Ground Truth Sample Grid')">
+                    <div class="p-3 bg-slate-850 border-b border-slate-800">
+                        <span class="text-xs font-semibold text-slate-200">Sample Predictions Grid</span>
+                    </div>
+                    <div class="p-2 bg-slate-950 flex items-center justify-center min-h-[200px]">
+                        <img src="b_quantized/predictions.png" alt="Predictions" class="max-h-52 object-contain rounded group-hover:scale-[1.02] transition">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Lightbox Modal -->
+    <div id="lightbox" class="lightbox-modal" onclick="closeLightbox(event)">
+        <div class="relative max-w-5xl max-h-[90vh] bg-slate-900 border border-slate-700 rounded-2xl p-4 shadow-2xl flex flex-col" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between pb-3 mb-2 border-b border-slate-800">
+                <h3 id="lightbox-title" class="font-bold text-slate-200 text-sm"></h3>
+                <button onclick="closeLightbox()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-auto flex items-center justify-center p-2 bg-slate-950 rounded-xl">
+                <img id="lightbox-img" src="" alt="Enlarged Plot" class="max-w-full max-h-[75vh] object-contain rounded-lg">
+            </div>
+            <div class="pt-3 mt-2 flex justify-end">
+                <a id="lightbox-download" href="" download class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-download"></i> Download High-Res PNG
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function filterCategory(cat) {
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                if (btn.dataset.cat === cat) {
+                    btn.classList.remove('bg-slate-800', 'text-slate-300');
+                    btn.classList.add('bg-indigo-600', 'text-white');
+                } else {
+                    btn.classList.remove('bg-indigo-600', 'text-white');
+                    btn.classList.add('bg-slate-800', 'text-slate-300');
+                }
+            });
+
+            document.querySelectorAll('.section-group').forEach(sec => {
+                if (cat === 'all' || sec.dataset.section === cat) {
+                    sec.style.display = 'block';
+                } else {
+                    sec.style.display = 'none';
+                }
+            });
+        }
+
+        function openLightbox(src, title) {
+            const modal = document.getElementById('lightbox');
+            const img = document.getElementById('lightbox-img');
+            const titleEl = document.getElementById('lightbox-title');
+            const downloadBtn = document.getElementById('lightbox-download');
+
+            img.src = src;
+            titleEl.textContent = title;
+            downloadBtn.href = src;
+            modal.classList.add('active');
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeLightbox();
+        });
+    </script>
+</body>
+</html>

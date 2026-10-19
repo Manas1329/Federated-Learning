@@ -17,7 +17,7 @@ SRC_DIR = DASHBOARD_DIR.parent / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from model import ChestCNN
-from paths import MODELS_DIR, PLOTS_DIR, RESULTS_DIR
+from paths import MODELS_DIR, PLOTS_DIR, RESULTS_DIR, resolve_data_path
 
 app = Flask(__name__, template_folder=str(DASHBOARD_DIR / "templates"), static_folder=str(DASHBOARD_DIR))
 
@@ -102,9 +102,7 @@ def start_training():
         return jsonify({"status": "error", "message": f"{client_id} is already running training."}), 400
 
     env = os.environ.copy()
-    base_dir = DASHBOARD_DIR.parent.parent
-    folder_name = client_id.lower().replace("-", "_")
-    data_path = os.path.abspath(os.path.join(base_dir, "data", folder_name))
+    data_path = str(resolve_data_path(client_name=client_id))
 
     env["SERVER_ADDRESS"] = f"{server_ip}:{port}"
     env["CLIENT_NAME"] = client_id

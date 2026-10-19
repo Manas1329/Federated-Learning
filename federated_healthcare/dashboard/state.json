@@ -21,18 +21,18 @@
     "dp_epsilon_avg": 0.0
   },
   "dropout_info": {
-    "expected_clients": 3,
+    "expected_clients": 5,
     "active_clients": 0,
     "dropped_clients": 0,
-    "minimum_required": 2,
+    "minimum_required": 3,
     "overall_status": "all_active"
   },
   "events": [],
   "config": {
     "use_quantization": true,
     "use_dp": true,
-    "target_clients": 3,
-    "min_clients": 2,
+    "target_clients": 5,
+    "min_clients": 3,
     "fl_port": 8080
   },
   "server_pid": null,
@@ -42,9 +42,9 @@
       "round": 10,
       "update_score": 90.0,
       "training_score": 85.0,
-      "historical_score": 79.1,
+      "historical_score": 82.8,
       "reliability_score": 100.0,
-      "trust_score": 87.3,
+      "trust_score": 88.1,
       "tag": "TRUSTED",
       "history": [
         [
@@ -53,45 +53,43 @@
           "SUSPICIOUS"
         ],
         [
-          6,
+          3,
           83.7,
           "TRUSTED"
         ],
         [
-          7,
-          81.1,
-          "TRUSTED"
+          4,
+          79.6,
+          "SUSPICIOUS"
         ],
         [
-          10,
-          87.3,
-          "TRUSTED"
-        ]
-      ]
-    },
-    "Hospital_C": {
-      "client_id": "Hospital_C",
-      "round": 7,
-      "update_score": 75.0,
-      "training_score": 95.0,
-      "historical_score": 77.3,
-      "reliability_score": 100.0,
-      "trust_score": 84.0,
-      "tag": "TRUSTED",
-      "history": [
-        [
-          2,
-          78.0,
+          5,
+          75.9,
           "SUSPICIOUS"
         ],
         [
           6,
-          80.7,
+          87.1,
           "TRUSTED"
         ],
         [
           7,
-          84.0,
+          67.5,
+          "SUSPICIOUS"
+        ],
+        [
+          8,
+          88.3,
+          "TRUSTED"
+        ],
+        [
+          9,
+          89.0,
+          "TRUSTED"
+        ],
+        [
+          10,
+          88.1,
           "TRUSTED"
         ]
       ]
@@ -99,26 +97,118 @@
     "Hospital_B": {
       "client_id": "Hospital_B",
       "round": 10,
-      "update_score": 75.0,
-      "training_score": 95.0,
-      "historical_score": 75.9,
+      "update_score": 89.0,
+      "training_score": 90.0,
+      "historical_score": 83.7,
       "reliability_score": 100.0,
-      "trust_score": 83.7,
+      "trust_score": 89.4,
       "tag": "TRUSTED",
       "history": [
         [
-          4,
+          2,
           78.0,
           "SUSPICIOUS"
         ],
         [
-          10,
+          3,
           83.7,
+          "TRUSTED"
+        ],
+        [
+          4,
+          82.6,
+          "TRUSTED"
+        ],
+        [
+          5,
+          73.9,
+          "SUSPICIOUS"
+        ],
+        [
+          6,
+          71.1,
+          "SUSPICIOUS"
+        ],
+        [
+          7,
+          88.2,
+          "TRUSTED"
+        ],
+        [
+          8,
+          87.4,
+          "TRUSTED"
+        ],
+        [
+          9,
+          87.9,
+          "TRUSTED"
+        ],
+        [
+          10,
+          89.4,
+          "TRUSTED"
+        ]
+      ]
+    },
+    "Hospital_C": {
+      "client_id": "Hospital_C",
+      "round": 10,
+      "update_score": 90.0,
+      "training_score": 85.0,
+      "historical_score": 85.9,
+      "reliability_score": 100.0,
+      "trust_score": 88.7,
+      "tag": "TRUSTED",
+      "history": [
+        [
+          2,
+          72.0,
+          "SUSPICIOUS"
+        ],
+        [
+          3,
+          83.3,
+          "TRUSTED"
+        ],
+        [
+          4,
+          83.9,
+          "TRUSTED"
+        ],
+        [
+          5,
+          81.4,
+          "TRUSTED"
+        ],
+        [
+          6,
+          86.0,
+          "TRUSTED"
+        ],
+        [
+          7,
+          87.4,
+          "TRUSTED"
+        ],
+        [
+          8,
+          88.2,
+          "TRUSTED"
+        ],
+        [
+          9,
+          88.5,
+          "TRUSTED"
+        ],
+        [
+          10,
+          88.7,
           "TRUSTED"
         ]
       ]
     }
   },
-  "version": 5,
-  "last_updated": "08:32:54 PM"
+  "version": 9,
+  "last_updated": "08:05:54 PM"
 }
