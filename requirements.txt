@@ -1,13 +1,4 @@
-# flwr==1.8.0
-# torch==2.2.0
-# torchvision==0.17.0
-# streamlit==1.31.0
-# matplotlib==3.8.3
-# pandas==2.2.0
-# numpy==1.26.4
-# scikit-learn==1.9.0
-# opacus==1.4.1
-# opt_einsum==3.4.0
+--extra-index-url https://download.pytorch.org/whl/cu121
 flwr==1.8.0
 streamlit==1.31.0
 matplotlib==3.8.3
@@ -18,5 +9,6 @@ opacus==1.4.1
 opt_einsum==3.4.0
 flask
 pillow
-torch
-torchvision
+pytest
+torch>=2.5.1
+torchvision>=0.20.1
