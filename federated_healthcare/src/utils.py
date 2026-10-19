@@ -129,16 +129,22 @@ def load_hospital_data(data_path, batch_size=32, img_size=128):
     train_dataset = TransformedSubset(train_subset, transform=train_transform)
     test_dataset = TransformedSubset(test_subset, transform=test_transform)
 
+    use_pin_memory = False
+
     trainloader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=True
+        shuffle=True,
+        pin_memory=use_pin_memory,
+        num_workers=0
     )
 
     testloader = DataLoader(
         test_dataset,
         batch_size=batch_size,
-        shuffle=False
+        shuffle=False,
+        pin_memory=use_pin_memory,
+        num_workers=0
     )
 
     print(f"Loaded {len(train_dataset)} training samples (augmented)")

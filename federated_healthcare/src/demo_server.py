@@ -67,8 +67,8 @@ parser.add_argument(
 parser.add_argument(
     "--target_clients",
     type=int,
-    default=int(os.environ.get("TARGET_CLIENTS", "3")),
-    help="Target number of clients per round (default: 3)"
+    default=int(os.environ.get("TARGET_CLIENTS", "5")),
+    help="Target number of clients per round (default: 5)"
 )
 parser.add_argument(
     "--min_clients",

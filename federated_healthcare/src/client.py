@@ -107,7 +107,13 @@ if FORCE_CPU:
 else:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-print(f"[{CLIENT_NAME}] Using device: {device}")
+if device.type == "cuda" and torch.cuda.is_available():
+    gpu_name = torch.cuda.get_device_name(0)
+    print(f"[{CLIENT_NAME}] GPU CUDA Acceleration ACTIVE: {gpu_name} ({device})")
+else:
+    num_threads = min(4, os.cpu_count() or 2)
+    torch.set_num_threads(num_threads)
+    print(f"[{CLIENT_NAME}] Running on CPU ({device}) with {num_threads} thread(s)")
 
 
 # --------------------------------------------------
@@ -117,12 +123,11 @@ print(f"[{CLIENT_NAME}] Using device: {device}")
 net = ChestCNN().to(device)
 
 
-# Limit CPU thread oversubscription when multiple clients run concurrently
-if not torch.cuda.is_available():
-    torch.set_num_threads(2)
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "32"))
+DP_BATCH_SIZE = int(os.environ.get("DP_BATCH_SIZE", "16"))
 
 if USE_DP:
-    trainloader, testloader = load_hospital_data(DATA_PATH, batch_size=32)
+    trainloader, testloader = load_hospital_data(DATA_PATH, batch_size=DP_BATCH_SIZE)
     
     from opacus import PrivacyEngine
     import torch.optim as optim
@@ -136,6 +141,7 @@ if USE_DP:
         data_loader=trainloader,
         noise_multiplier=DP_NOISE_MULTIPLIER,
         max_grad_norm=DP_MAX_GRAD_NORM,
+        poisson_sampling=False,
     )
 
     if len(make_private_result) == 4:
@@ -160,7 +166,7 @@ if USE_DP:
         opacus.optimizers.optimizer.contract = new_contract
         opacus.optimizers.optimizer._patched_contract = True
 else:
-    trainloader, testloader = load_hospital_data(DATA_PATH)
+    trainloader, testloader = load_hospital_data(DATA_PATH, batch_size=BATCH_SIZE)
 
 
 # --------------------------------------------------
@@ -243,6 +249,9 @@ class HospitalClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         global net
         
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         self.set_parameters(parameters)
         net.to(device)
         if USE_DP:
@@ -295,7 +304,7 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # TRAINING CONFIGURATION
         # ============================================================
-        NUM_EPOCHS = 2
+        NUM_EPOCHS = int(os.environ.get("LOCAL_EPOCHS", os.environ.get("NUM_EPOCHS", "2")))
         epoch_times = []
         epsilon = None
         

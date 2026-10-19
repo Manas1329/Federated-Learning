@@ -59,7 +59,7 @@ _ENV = _load_env()
 
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", _ENV.get("USE_QUANTIZATION", "1")) == "1"
 USE_DP           = os.environ.get("USE_DP",           _ENV.get("USE_DP",           "0")) == "1"
-TARGET_CLIENTS   = int(os.environ.get("TARGET_CLIENTS", _ENV.get("TARGET_CLIENTS", "3")))
+TARGET_CLIENTS   = int(os.environ.get("TARGET_CLIENTS", _ENV.get("TARGET_CLIENTS", "5")))
 import math
 MIN_CLIENTS      = max(2, math.ceil(0.6 * TARGET_CLIENTS))
 

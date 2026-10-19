@@ -496,7 +496,7 @@ if __name__ == "__main__":
     from federated_healthcare.src.dropout_handler import AdaptiveServer
     
     # Configure TARGET and MIN clients
-    TARGET_CLIENTS = int(os.environ.get("TARGET_CLIENTS", "3"))
+    TARGET_CLIENTS = int(os.environ.get("TARGET_CLIENTS", "5"))
     MIN_CLIENTS = max(2, math.ceil(0.6 * TARGET_CLIENTS))
 
     strategy = SaveModelStrategy(

@@ -247,9 +247,10 @@ class AdaptiveServer(Server):
                                 failures.append(Exception("Dropped by Fixed Deadline Control"))
                                 self._record_participation(str(client_proxy.cid), success=False)
                         
-                if future_to_client and timeout and self.engine.get_elapsed_time() >= timeout:
-                        print(f"\n[AdaptiveServer] Hard round timeout ({timeout}s) expired! Canceling remaining.")
-                        break
+                effective_timeout = timeout if timeout is not None else max(120.0, self.engine.hard_deadline * 2.0)
+                if future_to_client and self.engine.get_elapsed_time() >= effective_timeout:
+                    print(f"\n[AdaptiveServer] Effective round timeout ({effective_timeout:.1f}s) expired! Canceling remaining stragglers.")
+                    break
 
             for future in list(future_to_client.keys()):
                 client_proxy, ins = future_to_client.pop(future)
