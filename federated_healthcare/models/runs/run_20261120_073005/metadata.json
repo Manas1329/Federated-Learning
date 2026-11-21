@@ -1,0 +1,36 @@
+{
+  "run_id": "run_20261120_073005",
+  "training_start_time": "2026-11-20T07:30:05.786640Z",
+  "training_end_time": null,
+  "environment": {
+    "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "pytorch_version": "2.11.0+cu128",
+    "flower_version": "1.8.0",
+    "opacus_version": "1.4.1",
+    "git_commit": "b3c36c66243bfe24a5c378819c169fece211d653"
+  },
+  "best_round": 2,
+  "best_val_loss": 0.005458121039912824,
+  "best_val_accuracy": 1.0,
+  "final_round": null,
+  "early_stopped": false,
+  "early_stopping_reason": null,
+  "acceptance_result": null,
+  "promotion_result": null,
+  "config": {
+    "run_id": "run_20261120_073005",
+    "training_mode": "fresh",
+    "parent_model_id": null,
+    "parent_run_id": null,
+    "total_rounds": 10,
+    "target_clients": 3,
+    "min_clients": 2,
+    "use_dp": false,
+    "use_quantization": false,
+    "early_stopping_enabled": true,
+    "early_stopping_patience": 5,
+    "early_stopping_min_delta": 0.001,
+    "min_rounds": 5,
+    "dataset_version": "dataset_v001"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "run_id": "run_20261120_075119",
+  "training_mode": "fresh",
+  "parent_model_id": null,
+  "parent_run_id": null,
+  "total_rounds": 10,
+  "target_clients": 3,
+  "min_clients": 2,
+  "use_dp": false,
+  "use_quantization": false,
+  "early_stopping_enabled": true,
+  "early_stopping_patience": 5,
+  "early_stopping_min_delta": 0.001,
+  "min_rounds": 5,
+  "dataset_version": "dataset_v001"
+}

@@ -292,7 +292,7 @@ class UnlearningRequestHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, indent=2).encode()
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", len(body))
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 

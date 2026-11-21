@@ -34,14 +34,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # -------------------------------
 # Device
 # -------------------------------
-FORCE_CPU = os.environ.get("FORCE_CPU", "0") == "1"
-if FORCE_CPU:
-    device = torch.device("cpu")
-else:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cuda.matmul.allow_tf32 = True
+from device_utils import get_device
+device = get_device()
 
 def evaluate_model(model, testloader):
     model.eval()
@@ -100,7 +94,7 @@ def run_comparison():
 
     for hosp in hospitals:
         data_path = DATA_DIR / hosp
-        _, testloader = load_hospital_data(data_path, batch_size=32)
+        _, _, testloader = load_hospital_data(data_path, batch_size=32)
         
         print(f"\nEvaluating on {hosp} test set...")
         loc_res = evaluate_model(local_model, testloader)

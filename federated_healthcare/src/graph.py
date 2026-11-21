@@ -1,4 +1,5 @@
 import os
+from typing import Any
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -25,7 +26,7 @@ import sys
 # Ensure 'src' package is importable regardless of where the script is run from
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from paths import RESULTS_DIR, PLOTS_DIR, DASHBOARD_DIR
+from paths import RESULTS_DIR, PLOTS_DIR
 
 RESULTS_DIR_SUFFIX = RESULTS_DIR / SUFFIX
 PLOTS_DIR_SUFFIX = PLOTS_DIR / SUFFIX
@@ -107,8 +108,14 @@ if comparison_metrics_path.exists():
                 a_val = df_comp[(df_comp["model"] == "A_only") & (df_comp["hospital"] == h)][metric_col].values
                 f_val = df_comp[(df_comp["model"] == "Federated") & (df_comp["hospital"] == h)][metric_col].values
                 
-                a_only_vals.append(a_val[0] if len(a_val) > 0 and not np.isnan(a_val[0]) else 0)
-                fed_vals.append(f_val[0] if len(f_val) > 0 and not np.isnan(f_val[0]) else 0)
+                def _numeric_or_zero(value: Any) -> float:
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        return 0.0
+
+                a_only_vals.append(_numeric_or_zero(a_val[0]) if len(a_val) > 0 else 0.0)
+                fed_vals.append(_numeric_or_zero(f_val[0]) if len(f_val) > 0 else 0.0)
                 
             x = np.arange(len(hospitals))
             width = 0.35

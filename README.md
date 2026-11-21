@@ -75,6 +75,15 @@ DP_DELTA=1e-5
 FORCE_CPU=0
 ```
 
+For the first training run, no global checkpoint exists yet, so start with:
+
+```bat
+set TRAINING_MODE=fresh&& set TARGET_CLIENTS=3&& set MIN_CLIENTS=2&& python federated_healthcare\src\server.py
+```
+
+Use `TRAINING_MODE=warm_start` only after an approved global checkpoint has
+been created, and set `INIT_MODEL_PATH` to that `.pth` file when needed.
+
 To initialize your settings:
 ```bash
 cp .env_example .env
@@ -110,6 +119,10 @@ venv\Scripts\activate      # On Windows
 source venv/bin/activate    # On Linux/macOS
 pip install -r requirements.txt
 ```
+venv\Scripts\activate
+python -m pip uninstall -y torch torchvision torchaudio
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
 
 ### 2. Running Federated Learning
 Open 4 separate terminal windows:
@@ -119,6 +132,9 @@ Open 4 separate terminal windows:
   venv\Scripts\Activate.bat
   set TARGET_CLIENTS=3&& set MIN_CLIENTS=2&& python federated_healthcare\src\server.py
 
+  OR
+
+  set TRAINING_MODE=fresh&& set TARGET_CLIENTS=3&& set MIN_CLIENTS=2&& python federated_healthcare\src\server.py
   ```
 * **Terminal 2: Client A**
   ```bash
@@ -136,8 +152,87 @@ Open 4 separate terminal windows:
   ```bash
   venv\Scripts\Activate.bat
   set DATA_PATH=.\federated_healthcare\data\hospital_c&& set CLIENT_NAME=Hospital_C&& python federated_healthcare\src\client.py
-
   ```
+
+## 🔄 Controlled Periodic Retraining
+
+The system supports controlled, reproducible periodic retraining cycles with **zero modification to existing dataset directories**.
+
+### 1. Dataset Directory Preservation & Logical Manifests
+The existing directory structure is preserved completely untouched:
+```
+data/hospital_A/train/NORMAL/
+data/hospital_A/train/PNEUMONIA/
+data/hospital_B/train/NORMAL/
+data/hospital_B/train/PNEUMONIA/
+data/hospital_C/train/NORMAL/
+data/hospital_C/train/PNEUMONIA/
+```
+No images are renamed, moved, or duplicated. No physical `validation/` or `test/` folders are created inside hospital data folders.
+
+Instead, train/validation/test partitions are managed through immutable JSON manifests stored under `federated_healthcare/dataset_manifests/<hospital_id>/`:
+- Manifests record relative image paths, SHA-256 hashes, class labels, and split assignments (`train: 0.70`, `validation: 0.15`, `test: 0.15`).
+- Patient-level partition isolation is enforced where patient IDs are present in filenames.
+- Historical test cohorts are preserved when new images arrive; new images are assigned deterministically without reshuffling the historical dataset.
+
+### 2. Dataset Version Creation Command
+Generate or update logical dataset manifests for hospitals:
+```bash
+# Generate version dataset_v001 for all hospitals:
+python federated_healthcare/src/dataset_manifest.py --hospital all --version dataset_v001
+
+# For a single hospital:
+python federated_healthcare/src/dataset_manifest.py --hospital Hospital_A --version dataset_v001
+```
+
+When new clinically verified images are placed in the existing `NORMAL/` or `PNEUMONIA/` folders:
+```bash
+# Detect changes and generate dataset_v002 inheriting historical assignments:
+python federated_healthcare/src/dataset_manifest.py --hospital all --version dataset_v002 --parent dataset_v001
+```
+
+### 3. Training Modes: Fresh vs Warm-Start
+
+#### Fresh Initialisation (`TRAINING_MODE=fresh`)
+- Initialises a new ChestCNN with deterministic random seed (`SPLIT_SEED=42`).
+- Saves baseline checkpoint as `initial_model.pth`.
+
+#### Warm-Start Retraining (`TRAINING_MODE=warm_start` — Default)
+- Loads the approved global model from `INIT_MODEL_PATH` or `models/approved/global_model.pth`.
+- Strictly verifies checkpoint existence, SHA-256 hash, architecture keys, and tensor shapes.
+- With `ALLOW_RANDOM_FALLBACK=0`, the run stops immediately with a fatal error if the checkpoint is missing or invalid. Never silently falls back to random weights.
+
+### 4. Periodic Retraining Workflow
+1. **Initial Baseline Evaluation (Before Round 1)**: Evaluates the initial global model on every hospital's validation partition. Collects TP, TN, FP, FN, loss, accuracy, and F1.
+2. **Round-Wise Validation**: In each federated round, the server aggregates client updates into a new candidate model. Clients evaluate this model on their validation partition in a single inference pass and return aggregate counts.
+3. **Exact Checkpoint Selection**: The primary checkpoint criterion is pooled validation loss. When an improvement $\ge \text{MIN\_DELTA}$ (0.001) occurs, `best_model.pth` is saved atomically.
+4. **Early Stopping**: If validation loss does not improve for `EARLY_STOPPING_PATIENCE` (5) consecutive rounds after `MIN_ROUNDS` (5), federated rounds stop cleanly.
+5. **Final Independent Testing**: Evaluates `best_model.pth` on the reserved `test` partition across all hospitals.
+6. **Model Approval & Rollback**: Evaluates candidate metrics against configurable experimental safeguards (`MODEL_MIN_ACCURACY=0.80`, `MODEL_MIN_PNEUMONIA_RECALL=0.85`). If approved, atomically promotes to `models/approved/global_model.pth` and archives the prior approved model to `models/approved/previous_global_model.pth`.
+
+### 5. Launch Commands
+
+#### Server Launch:
+```bash
+python federated_healthcare/src/server.py
+```
+
+#### Hospital Client Launches:
+```bash
+# Hospital A
+set CLIENT_NAME=Hospital_A&& python federated_healthcare/src/client.py
+
+# Hospital B
+set CLIENT_NAME=Hospital_B&& python federated_healthcare/src/client.py
+
+# Hospital C
+set CLIENT_NAME=Hospital_C&& python federated_healthcare/src/client.py
+```
+
+#### Running Automated Tests:
+```bash
+python -m unittest discover -s federated_healthcare/src/tests
+```
 
 ---
 
@@ -206,8 +301,6 @@ git push -u origin feature/restructure-and-quantization
 
 ### 5. Open a Pull Request
 Go to your Git repository (e.g. GitHub/GitLab) and merge the feature branch into `main` after verification.
-
-
 
 
 

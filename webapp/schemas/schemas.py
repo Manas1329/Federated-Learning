@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 from ..models.db_models import UserRole, TrustStatus, TrainingStatus, AuditEventType
 
 
-PN = {"protected_namespaces": ()}
+PN: Dict[str, Any] = {"protected_namespaces": ()}
 
 
 class Token(BaseModel):

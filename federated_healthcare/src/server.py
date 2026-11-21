@@ -1,24 +1,22 @@
 import flwr as fl
 import os
+import sys
 import time
+import math
 import numpy as np
 import pandas as pd
 import torch
-import math
-from typing import Optional, Set, Dict, List, Tuple
-
-# Trust / Tagging Module (Phase 1)
-# Wrapped in try/except: if import fails, training continues normally
-try:
-    from trust_manager import trust_manager as _tm
-    _TRUST_OK = True
-except Exception as _te:
-    _TRUST_OK = False
-    print(f"[TrustManager] Import warning: {_te}")
-
-# Load environment variables from .env file if present (search cwd, src, parent, project root)
 from pathlib import Path
-_curr = Path(__file__).resolve().parent
+from typing import Optional, Dict, Any, Set, Tuple
+from collections import OrderedDict
+
+# Ensure 'src' package is importable regardless of where the script is run from
+SRC_DIR = Path(__file__).resolve().parent
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+# Load environment variables from .env file if present
+_curr = SRC_DIR
 _candidates = [
     Path.cwd() / ".env",
     _curr / ".env",
@@ -43,27 +41,47 @@ if not VERBOSE_LOGGING:
     import logging
     logging.getLogger("flwr").setLevel(logging.WARNING)
 
-from collections import OrderedDict
-from flwr.common import parameters_to_ndarrays
-from model import ChestCNN
-
 from flwr.common import (
     parameters_to_ndarrays,
     ndarrays_to_parameters,
+    Scalar,
 )
 
-from quantization import (
-    dequantize_parameters,
+from paths import RESULTS_DIR, MODELS_DIR, APPROVED_MODELS_DIR, resolve_data_path
+from model import ChestCNN, evaluate_metrics
+from device_utils import get_device
+from quantization import dequantize_parameters
+from checkpoint_manager import (
+    verify_checkpoint,
+    save_checkpoint_atomic,
+    load_raw_state_dict
 )
-from dataclasses import replace
+from run_manager import RetrainingRunManager
+from model_approval import ModelApprovalGate
+
+# Trust / Tagging Module (Phase 1)
+try:
+    from trust_manager import trust_manager as _tm
+    _TRUST_OK = True
+except Exception as _te:
+    _TRUST_OK = False
+    print(f"[TrustManager] Import warning: {_te}")
 
 # --------------------------------------------------
-# Paths & Config
+# Paths & Periodic Retraining Configuration
 # --------------------------------------------------
 
 USE_DP = os.environ.get("USE_DP", "0") == "1"
 USE_QUANTIZATION = os.environ.get("USE_QUANTIZATION", "1") == "1"
 TOTAL_ROUNDS = int(os.environ.get("NUM_ROUNDS", "10"))
+TRAINING_MODE = os.environ.get("TRAINING_MODE", "warm_start").strip().lower()
+ALLOW_RANDOM_FALLBACK = os.environ.get("ALLOW_RANDOM_FALLBACK", "0").strip() in ("1", "true")
+INIT_MODEL_PATH_ENV = os.environ.get("INIT_MODEL_PATH", "").strip()
+
+EARLY_STOPPING_ENABLED = os.environ.get("EARLY_STOPPING_ENABLED", "1").strip() in ("1", "true")
+EARLY_STOPPING_PATIENCE = int(os.environ.get("EARLY_STOPPING_PATIENCE", "5"))
+EARLY_STOPPING_MIN_DELTA = float(os.environ.get("EARLY_STOPPING_MIN_DELTA", "0.001"))
+MIN_ROUNDS = int(os.environ.get("MIN_ROUNDS", "5"))
 
 if "EXPERIMENT_NAME" in os.environ:
     SUFFIX = os.environ["EXPERIMENT_NAME"]
@@ -74,48 +92,6 @@ elif USE_QUANTIZATION:
 else:
     SUFFIX = "a_pure"
 
-# --------------------------------------------------
-# Optional warm-start: load initial model from checkpoint
-# Set INIT_MODEL_PATH=/path/to/checkpoint.pth to warm-start
-# the federation from a pre-existing model (e.g., post-unlearn).
-# --------------------------------------------------
-def _load_initial_parameters():
-    """Return Flower Parameters from INIT_MODEL_PATH if set, else None."""
-    init_path = os.environ.get("INIT_MODEL_PATH", "").strip()
-    if not init_path:
-        return None
-    from pathlib import Path as _Path
-    p = _Path(init_path)
-    if not p.exists():
-        print(f"[INIT_MODEL] WARNING: INIT_MODEL_PATH not found: {p}. Starting from random weights.")
-        return None
-    try:
-        _device = torch.device("cpu")  # always load to CPU for parameter broadcast
-        _m = ChestCNN().to(_device)
-        _m.load_state_dict(torch.load(str(p), map_location=_device))
-        _ndarrays = [v.cpu().numpy() for v in _m.state_dict().values()]
-        _params = ndarrays_to_parameters(_ndarrays)
-        print(f"[INIT_MODEL] Warm-starting from: {p}")
-        return _params
-    except Exception as _e:
-        print(f"[INIT_MODEL] WARNING: Failed to load INIT_MODEL_PATH ({_e}). Starting from random weights.")
-        return None
-
-# Set of all known federation participants — used by the auto-unlearn trigger.
-# Overridable via environment variable: KNOWN_CLIENTS=Hospital_A,Hospital_B,Hospital_C
-KNOWN_CLIENTS: set = {
-    c.strip()
-    for c in os.environ.get("KNOWN_CLIENTS", "Hospital_A,Hospital_B,Hospital_C").split(",")
-    if c.strip()
-}
-
-from pathlib import Path
-import sys
-# Ensure 'src' package is importable regardless of where the script is run from
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from paths import RESULTS_DIR, MODELS_DIR
-
 RESULTS_DIR_SUFFIX = RESULTS_DIR / SUFFIX
 RESULTS_DIR_SUFFIX.mkdir(parents=True, exist_ok=True)
 
@@ -124,23 +100,206 @@ ROUND_METRICS_FILE = RESULTS_DIR_SUFFIX / f"round_metrics_{SUFFIX}.csv"
 MODEL_DIR = MODELS_DIR
 MODEL_PATH = MODEL_DIR / f"global_model_{SUFFIX}.pth"
 
+# Initialize Run Manager (Non-destructive: does not delete historical metrics)
+RUN_ID = os.environ.get("RUN_ID", None)
+run_manager = RetrainingRunManager(run_id=RUN_ID)
 
-# --------------------------------------------------
-# Reset old metrics
-# --------------------------------------------------
+device = get_device()
+print(f"[Server] Active Run ID: {run_manager.run_id}")
+print(f"[Server] Central device: {device}")
+print(f"[Server] Training mode: {TRAINING_MODE} (ALLOW_RANDOM_FALLBACK={ALLOW_RANDOM_FALLBACK})")
 
-if os.path.exists(METRICS_FILE):
-    os.remove(METRICS_FILE)
-
-if os.path.exists(ROUND_METRICS_FILE):
-    os.remove(ROUND_METRICS_FILE)
-
-
-# --------------------------------------------------
-# Global round timer
-# --------------------------------------------------
+# Set of all known federation participants — used by the auto-unlearn trigger.
+KNOWN_CLIENTS: set = {
+    c.strip()
+    for c in os.environ.get("KNOWN_CLIENTS", "Hospital_A,Hospital_B,Hospital_C").split(",")
+    if c.strip()
+}
 
 round_start_times = {}
+
+# --------------------------------------------------
+# Setup Initial Model & Warm-Start Verification
+# --------------------------------------------------
+
+def setup_initial_model(
+    training_mode: str,
+    init_path_str: str,
+    allow_random: bool,
+    manager: RetrainingRunManager,
+    target_device: torch.device
+) -> Tuple[ChestCNN, fl.common.Parameters, Optional[str], Optional[str]]:
+    """
+    Initialize global model for the periodic retraining cycle.
+    In warm-start mode, strictly verifies checkpoint integrity and parameters.
+    Saves initial_model.pth to the run models directory.
+    """
+    model = ChestCNN().to(target_device)
+    parent_model_id = None
+    parent_run_id = None
+
+    if training_mode == "warm_start":
+        candidate_path = None
+        if init_path_str:
+            candidate_path = Path(init_path_str)
+        elif (APPROVED_MODELS_DIR / "global_model.pth").exists():
+            candidate_path = APPROVED_MODELS_DIR / "global_model.pth"
+        elif MODEL_PATH.exists():
+            candidate_path = MODEL_PATH
+
+        if not candidate_path or not candidate_path.exists():
+            if not allow_random:
+                configured_path = init_path_str or "<not set>"
+                raise FileNotFoundError(
+                    "[WARM_START_FATAL] Warm-start selected, but no valid global "
+                    "checkpoint was found. "
+                    f"INIT_MODEL_PATH={configured_path}; "
+                    f"checked={candidate_path or '<no fallback path>'}. "
+                    "For a first run, set TRAINING_MODE=fresh. "
+                    "For retraining, set INIT_MODEL_PATH to an existing approved "
+                    "global_model.pth. "
+                    "ALLOW_RANDOM_FALLBACK=1 is available only when random "
+                    "initialization is explicitly intended."
+                )
+            print("[WARM_START] Checkpoint missing. Falling back to fresh random weights (ALLOW_RANDOM_FALLBACK=1).")
+            training_mode = "fresh"
+        else:
+            is_valid, err_msg, state_dict, metadata = verify_checkpoint(
+                candidate_path,
+                expected_model=model,
+                allow_random_fallback=allow_random
+            )
+            if not is_valid:
+                raise RuntimeError(f"[WARM_START_FATAL] Invalid checkpoint: {err_msg}")
+
+            model.load_state_dict(state_dict)
+            parent_model_id = str(candidate_path)
+            parent_run_id = metadata.get("run_id") or metadata.get("promoted_from_run")
+            print(f"[WARM_START] Verified and loaded warm-start checkpoint: {candidate_path}")
+            if parent_run_id:
+                print(f"[WARM_START] Linked parent run ID: {parent_run_id}")
+
+    if training_mode == "fresh":
+        seed = int(os.environ.get("SPLIT_SEED", "42"))
+        torch.manual_seed(seed)
+        model = ChestCNN().to(target_device)
+        print(f"[FRESH_INIT] ChestCNN initialized with seed {seed}")
+
+    # Convert model parameters for Flower
+    ndarrays = [v.cpu().numpy() for v in model.state_dict().values()]
+    initial_params = ndarrays_to_parameters(ndarrays)
+
+    # Save initial_model.pth atomically
+    init_meta = {
+        "run_id": manager.run_id,
+        "training_mode": training_mode,
+        "parent_model_id": parent_model_id,
+        "parent_run_id": parent_run_id,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    }
+    save_checkpoint_atomic(model.state_dict(), manager.initial_model_path, metadata=init_meta)
+    print(f"[Server] Saved initial model checkpoint: {manager.initial_model_path}")
+
+    return model, initial_params, parent_model_id, parent_run_id
+
+
+# --------------------------------------------------
+# Initial Baseline Validation Evaluation (Before Round 1)
+# --------------------------------------------------
+
+def run_initial_baseline_evaluation(
+    initial_model: ChestCNN,
+    hospital_ids: list[str],
+    manager: RetrainingRunManager,
+    target_device: torch.device
+) -> Dict[str, Any]:
+    """
+    Evaluate initial global model on each hospital's validation partition
+    before round 1 gradient updates.
+    """
+    from utils import load_hospital_data
+
+    print("\n" + "=" * 65)
+    print("  INITIAL BASELINE EVALUATION (BEFORE ROUND 1)")
+    print("=" * 65)
+
+    results = []
+    pooled_tp = 0
+    pooled_tn = 0
+    pooled_fp = 0
+    pooled_fn = 0
+    pooled_loss_sum = 0.0
+    pooled_total = 0
+
+    eval_start = time.perf_counter()
+
+    for h_id in sorted(hospital_ids):
+        data_path = resolve_data_path(None, h_id)
+        trainloader, valloader, testloader = load_hospital_data(data_path, batch_size=32)
+        h_metrics = evaluate_metrics(initial_model, valloader, device=target_device)
+
+        pooled_tp += h_metrics["tp"]
+        pooled_tn += h_metrics["tn"]
+        pooled_fp += h_metrics["fp"]
+        pooled_fn += h_metrics["fn"]
+        pooled_loss_sum += h_metrics["loss_sum"]
+        pooled_total += h_metrics["total"]
+
+        print(
+            f"  {h_id:<14} | Samples: {h_metrics['total']:<4} | "
+            f"Acc: {h_metrics['accuracy']*100:.2f}% | Loss: {h_metrics['loss']:.4f} | "
+            f"F1: {h_metrics['f1']:.4f} | Rec: {h_metrics['recall']:.4f}"
+        )
+
+        results.append({
+            "client": h_id,
+            "sample_count": h_metrics["total"],
+            "correct": h_metrics["correct"],
+            "incorrect": h_metrics["total"] - h_metrics["correct"],
+            "tp": h_metrics["tp"],
+            "tn": h_metrics["tn"],
+            "fp": h_metrics["fp"],
+            "fn": h_metrics["fn"],
+            "loss_sum": h_metrics["loss_sum"],
+            "loss": h_metrics["loss"],
+            "accuracy": h_metrics["accuracy"],
+            "precision": h_metrics["precision"],
+            "recall": h_metrics["recall"],
+            "f1": h_metrics["f1"]
+        })
+
+    eval_duration = time.perf_counter() - eval_start
+
+    pooled_acc = (pooled_tp + pooled_tn) / pooled_total if pooled_total > 0 else 0.0
+    pooled_prec = pooled_tp / (pooled_tp + pooled_fp) if (pooled_tp + pooled_fp) > 0 else 0.0
+    pooled_rec = pooled_tp / (pooled_tp + pooled_fn) if (pooled_tp + pooled_fn) > 0 else 0.0
+    pooled_f1 = (2 * pooled_prec * pooled_rec / (pooled_prec + pooled_rec)) if (pooled_prec + pooled_rec) > 0 else 0.0
+    pooled_loss = pooled_loss_sum / pooled_total if pooled_total > 0 else 0.0
+
+    print("-" * 65)
+    print(
+        f"  POOLED BASELINE | Samples: {pooled_total:<4} | "
+        f"Acc: {pooled_acc*100:.2f}% | Loss: {pooled_loss:.4f} | "
+        f"F1: {pooled_f1:.4f} | Rec: {pooled_rec:.4f} | Duration: {eval_duration:.2f}s"
+    )
+    print("=" * 65 + "\n")
+
+    # Save to initial_metrics.csv
+    init_df = pd.DataFrame(results)
+    init_df.to_csv(manager.initial_metrics_path, index=False)
+
+    return {
+        "pooled": {
+            "accuracy": pooled_acc,
+            "loss": pooled_loss,
+            "f1": pooled_f1,
+            "precision": pooled_prec,
+            "recall": pooled_rec,
+            "total": pooled_total,
+            "duration": eval_duration
+        },
+        "per_hospital": {r["client"]: r for r in results}
+    }
 
 
 # --------------------------------------------------
@@ -152,46 +311,23 @@ def _trigger_post_training_unlearning(
     suffix: str,
     active_clients: set,
 ):
-    """
-    Called automatically after the final FL round checkpoint is saved.
-
-    For each client that was quarantined at any point during training,
-    this function runs the full post-training unlearning pipeline:
-        1. Gradient-ascent erasure of the target client's historical contribution.
-        2. DACM distribution audit on surviving clients.
-        3. Compensatory FedAvg recovery retraining.
-        4. Three-stage evaluation (before / after unlearn / after recovery).
-        5. Saves the recovered model as dacm_recovered_<target>_<suffix>.pth
-
-    The existing quarantine/gating logic is NOT affected — exclusion from the
-    current round's FedAvg has already happened before this function is called.
-    """
     print("\n" + "=" * 62)
     print("  [AUTO-UNLEARN] POST-TRAINING UNLEARNING TRIGGERED")
     print("=" * 62)
     print(f"  [AUTO-UNLEARN] Quarantined clients detected : {quarantined_clients}")
     print(f"  [AUTO-UNLEARN] Final checkpoint suffix      : {suffix}")
     print(f"  [AUTO-UNLEARN] Active federation members   : {sorted(active_clients)}")
-    print("  [AUTO-UNLEARN] Reason: Historical contributions from quarantined")
-    print("  [AUTO-UNLEARN] clients remain in the global model from earlier rounds.")
-    print("  [AUTO-UNLEARN] Gradient-ascent unlearning + DACM recovery will now")
-    print("  [AUTO-UNLEARN] remove that influence from the saved checkpoint.")
     print("=" * 62)
 
-    # Lazy import — avoids touching flwr/tensorflow chain at server startup.
     try:
         from unlearn_workflow import run_unlearn_workflow
     except Exception as import_err:
         print(f"[AUTO-UNLEARN] ERROR: Could not import unlearn_workflow: {import_err}")
-        print("[AUTO-UNLEARN] Post-training unlearning could not run.")
         return
 
-    # Process each quarantined client sequentially.
-    # active_clients is mutated in-place by run_unlearn_workflow on success,
-    # so subsequent unlearning calls see the correct surviving set.
     remaining_active = set(active_clients)
     for target in sorted(quarantined_clients):
-        print(f"\n[AUTO-UNLEARN] ── Starting post-training unlearning for: {target} ──")
+        print(f"\n[AUTO-UNLEARN] Starting post-training unlearning for: {target}")
         try:
             success = run_unlearn_workflow(
                 target_client=target,
@@ -199,46 +335,9 @@ def _trigger_post_training_unlearning(
                 active_clients=remaining_active,
             )
             if success:
-                print(f"[AUTO-UNLEARN] ✓ Unlearning workflow completed for {target}.")
-                print(f"[AUTO-UNLEARN]   {target} has been erased from the global model.")
-                print(f"[AUTO-UNLEARN]   Remaining active clients: {sorted(remaining_active)}")
-                # Record in all_global_models_registry.csv if present
-                registry_file = MODELS_DIR / "all_global_models_registry.csv"
-                if registry_file.exists():
-                    try:
-                        import datetime
-                        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        rec_model_name = f"dacm_recovered_{target}_{suffix}"
-                        surv_str = "|".join(sorted(remaining_active))
-                        with open(registry_file, "a", newline="") as rf:
-                            import csv
-                            writer = csv.writer(rf)
-                            writer.writerow([
-                                ts,
-                                rec_model_name,
-                                surv_str,
-                                len(remaining_active),
-                                0,
-                                len(remaining_active),
-                                1,
-                                "",
-                                ""
-                            ])
-                        print(f"[AUTO-UNLEARN] Registered {rec_model_name} in model registry associated with {surv_str}.")
-                    except Exception as reg_err:
-                        print(f"[AUTO-UNLEARN] Note: Could not update registry: {reg_err}")
-            else:
-                print(f"[AUTO-UNLEARN] ✗ Unlearning workflow returned False for {target}.")
-                print(f"[AUTO-UNLEARN]   Check logs above for the specific failure reason.")
+                print(f"[AUTO-UNLEARN] Successfully completed unlearning for {target}.")
         except Exception as unlearn_err:
-            print(f"[AUTO-UNLEARN] ✗ Exception during unlearning of {target}: {unlearn_err}")
-            import traceback
-            traceback.print_exc()
-            print(f"[AUTO-UNLEARN]   Continuing to next quarantined client (if any).")
-
-    print("\n" + "=" * 62)
-    print("  [AUTO-UNLEARN] POST-TRAINING UNLEARNING STAGE COMPLETE")
-    print("=" * 62)
+            print(f"[AUTO-UNLEARN] Exception during unlearning of {target}: {unlearn_err}")
 
 
 # --------------------------------------------------
@@ -246,14 +345,6 @@ def _trigger_post_training_unlearning(
 # --------------------------------------------------
 
 def _get_excluded_cids(excluded_names: set) -> set:
-    """
-    Translate a set of human-readable client names into the Flower cid strings
-    that the ClientProxy/ClientManager use internally.
-
-    Reads from trust_manager.cid_to_name (populated by record_update after
-    round 1).  Returns an empty set when TrustManager is unavailable or when
-    no cid mapping exists yet (e.g., round 1).
-    """
     if not _TRUST_OK or not excluded_names:
         return set()
     return {
@@ -264,23 +355,10 @@ def _get_excluded_cids(excluded_names: set) -> set:
 
 
 def _check_promote_to_excluded(
-    quarantined_names: set,
-    excluded_names: set,
-    rejected_names: set = None,
+    quarantined_names: Set[str],
+    excluded_names: Set[str],
+    rejected_names: Optional[Set[str]] = None,
 ) -> set:
-    """
-    Examine clients with gating decisions from the current round against their
-    PREVIOUS round's Trust Tag (stored in latest_trust).
-
-    Rules:
-    1. SUSPICIOUS tag + QUARANTINE decision -> Permanent Exclusion
-    2. UNTRUSTED tag  + (QUARANTINE or REJECT) decision -> Permanent Exclusion
-
-    Uses the previous-round tag because finalize_round() — which assigns the
-    current-round tag — has not yet run at aggregate_fit time.
-
-    Returns the set of names that were newly promoted this call.
-    """
     newly_excluded: set = set()
     if not _TRUST_OK:
         return newly_excluded
@@ -288,12 +366,10 @@ def _check_promote_to_excluded(
     if rejected_names is None:
         rejected_names = set()
 
-    # Build a reverse lookup: name -> cid (trust_manager stores cid->name)
     name_to_cid = {v: k for k, v in _tm.cid_to_name.items()}
 
     def _get_tag(name: str) -> Optional[str]:
         trust_info = None
-        # Primary lookup: direct from client_state by client name
         if hasattr(_tm, "client_state") and name in _tm.client_state:
             trust_info = _tm.client_state[name].get("latest_trust")
         if not trust_info:
@@ -302,140 +378,101 @@ def _check_promote_to_excluded(
                 trust_info = _tm.get_trust_for_cid(cid)
         return trust_info.get("tag") if trust_info else None
 
-    # Check quarantined clients: SUSPICIOUS or UNTRUSTED
     for name in quarantined_names:
         if name in excluded_names:
-            continue  # already excluded
+            continue
         tag = _get_tag(name)
-        if tag == "SUSPICIOUS":
+        if tag in ("SUSPICIOUS", "UNTRUSTED"):
             newly_excluded.add(name)
-            print(
-                f"\n[EXCL] {name} -> PERMANENTLY EXCLUDED"
-                f" (QUARANTINE + SUSPICIOUS tag)."
-                f" Will not be selected for training or evaluation"
-                f" in any subsequent round."
-            )
-        elif tag == "UNTRUSTED":
-            newly_excluded.add(name)
-            print(
-                f"\n[EXCL] {name} -> PERMANENTLY EXCLUDED"
-                f" (QUARANTINE + UNTRUSTED tag)."
-                f" Will not be selected for training or evaluation"
-                f" in any subsequent round."
-            )
+            print(f"[EXCL] {name} -> PERMANENTLY EXCLUDED (QUARANTINE + {tag} tag).")
 
-    # Check rejected clients: UNTRUSTED only
     for name in rejected_names:
         if name in excluded_names or name in newly_excluded:
-            continue  # already excluded
+            continue
         tag = _get_tag(name)
         if tag == "UNTRUSTED":
             newly_excluded.add(name)
-            print(
-                f"\n[EXCL] {name} -> PERMANENTLY EXCLUDED"
-                f" (REJECT + UNTRUSTED tag)."
-                f" Will not be selected for training or evaluation"
-                f" in any subsequent round."
-            )
+            print(f"[EXCL] {name} -> PERMANENTLY EXCLUDED (REJECT + UNTRUSTED tag).")
 
     return newly_excluded
 
 
 # --------------------------------------------------
-# Custom FedAvg Strategy
+# Custom FedAvg Strategy with Periodic Retraining Features
 # --------------------------------------------------
 
 class SaveModelStrategy(fl.server.strategy.FedAvg):
 
-    # ---> DACM: ADD INIT TO TRACK WEIGHTS <---
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        run_manager_inst: RetrainingRunManager,
+        total_rounds: int = 10,
+        early_stopping_enabled: bool = True,
+        early_stopping_patience: int = 5,
+        early_stopping_min_delta: float = 0.001,
+        min_rounds: int = 5,
+        *args,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
-        # Default weight is 1.0 (normal training)
+        self.run_manager = run_manager_inst
+        self.total_rounds = total_rounds
         self.dacm_recovery_weight = 1.0
         self.dacu_recovery_weight = 1.0
-        # Accumulates every client name that received a QUARANTINE decision
-        # across any round during training. Populated in aggregate_fit.
-        # Used after the final round to auto-trigger post-training unlearning.
         self.quarantined_clients: set = set()
-        # Total rounds configured for this run — used to detect the final round.
-        self.total_rounds: int = TOTAL_ROUNDS
-        # ── Persistent exclusion ──────────────────────────────────────────
-        # Clients added here are NEVER selected for training or evaluation again.
-        # Populated when a client gets QUARANTINE gate + SUSPICIOUS trust tag.
         self.excluded_names: set = set()
-        # Matching Flower cid strings — derived from excluded_names via cid_to_name.
-        # Refreshed at the start of configure_fit / configure_evaluate each round.
-        self.excluded_cids: set  = set()
-        # Original target count, stored so we can decrement min_fit_clients /
-        # min_evaluate_clients / min_available_clients when clients are excluded
-        # and Flower would otherwise block waiting for the excluded client.
+        self.excluded_cids: set = set()
+
         self._initial_target_clients: int = int(
             self.min_fit_clients
         ) if hasattr(self, "min_fit_clients") else int(
             os.environ.get("TARGET_CLIENTS", "3")
         )
 
-    def _refresh_exclusion(self) -> None:
-        """Re-derive excluded_cids from excluded_names via trust_manager's cid map.
+        # Early Stopping & Checkpoint Selection State
+        self.early_stopping_enabled = early_stopping_enabled
+        self.early_stopping_patience = early_stopping_patience
+        self.early_stopping_min_delta = early_stopping_min_delta
+        self.min_rounds = min_rounds
+        self.best_val_loss = float("inf")
+        self.best_val_acc = 0.0
+        self.best_round = 0
+        self.patience_counter = 0
+        self.early_stop_triggered = False
+        self.early_stop_reason: Optional[str] = None
 
-        Safe to call every round: the cid_to_name map grows monotonically as
-        clients connect, so later calls may resolve names that were unresolvable
-        in earlier rounds.
-        """
+        self.current_round_parameters: Optional[fl.common.Parameters] = None
+        self.current_round_number: int = 0
+
+    def _refresh_exclusion(self) -> None:
         self.excluded_cids = _get_excluded_cids(self.excluded_names)
 
     def _reduce_quorum_for_exclusions(self) -> None:
-        """
-        Adjust min_fit_clients, min_evaluate_clients, and min_available_clients
-        to reflect the reduced federation size after permanent exclusions.
-
-        Without this, Flower's client_manager.sample() will block indefinitely
-        waiting for the excluded client to become available.
-
-        The adjusted value is max(1, original_target - len(excluded)).
-        """
         n_excluded = len(self.excluded_names)
         if n_excluded == 0:
             return
         new_target = max(1, self._initial_target_clients - n_excluded)
-        new_min    = max(1, new_target - 1)          # at least 1 below target
+        new_min = max(1, new_target - 1)
         if self.min_fit_clients != new_target or self.min_available_clients > new_min:
             print(
                 f"[EXCL] Adjusting Flower quorum: "
                 f"min_fit_clients {self.min_fit_clients} -> {new_target}, "
                 f"min_available_clients {self.min_available_clients} -> {new_min}"
             )
-            self.min_fit_clients      = new_target
+            self.min_fit_clients = new_target
             self.min_evaluate_clients = new_target
             self.min_available_clients = new_min
 
-    def configure_fit(
-        self,
-        server_round,
-        parameters,
-        client_manager,
-    ):
-
-        # Start timer for this round
+    def configure_fit(self, server_round, parameters, client_manager):
         round_start_times[server_round] = time.perf_counter()
 
-        print("\n")
-        print("=" * 60)
+        print("\n" + "=" * 60)
         print(f"Starting Federated Round {server_round}")
         print("=" * 60)
 
-        # ── Sync exclusion cids and adjust quorum before sampling ─────────────
         self._refresh_exclusion()
         self._reduce_quorum_for_exclusions()
 
-        if self.excluded_names:
-            print(
-                f"[EXCL] Permanently excluded clients (will not be selected): "
-                f"{sorted(self.excluded_names)}"
-            )
-
-        # Unregister permanently excluded clients from Flower client_manager
-        # so they can never be sampled by client_manager
         if self.excluded_cids:
             all_cm_clients = client_manager.all()
             for exc_cid in list(self.excluded_cids):
@@ -445,7 +482,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                     except Exception:
                         pass
 
-        # Store global params for trust update-norm computation
         if _TRUST_OK:
             try:
                 _tm.set_global_params(parameters_to_ndarrays(parameters))
@@ -457,36 +493,20 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             "use_quantization": bool(USE_QUANTIZATION),
         }
 
-        # ---> DACM: INJECT THE WEIGHT INTO THE CLIENT CONFIG <---
         dacm_weight = getattr(self, 'dacm_recovery_weight', getattr(self, 'dacu_recovery_weight', 1.0))
         base_config["pneumonia_weight"] = float(dacm_weight)
 
         available_clients = client_manager.num_available()
         sample_size = min(self.min_fit_clients, available_clients)
 
-        # Select clients using client_manager passed directly into function
         clients = client_manager.sample(
             num_clients=sample_size,
             min_num_clients=self.min_available_clients
         )
 
-        # ── Filter out permanently excluded clients ───────────────────────────
-        # Flower's client_manager has no awareness of our exclusion set, so we
-        # filter the sampled list here.  The quorum adjustment above ensures
-        # sample_size already reflects the smaller active federation.
         if self.excluded_cids:
-            before = len(clients)
             clients = [c for c in clients if c.cid not in self.excluded_cids]
-            after   = len(clients)
-            if before != after:
-                excluded_str = ", ".join(sorted(self.excluded_names))
-                print(
-                    f"[EXCL] configure_fit Round {server_round}: "
-                    f"removed {before - after} excluded client(s) from fit list "
-                    f"[{excluded_str}]"
-                )
 
-        # Build per-client FitIns — send only operational training config (trust is server-side only)
         result = []
         for client in clients:
             config = dict(base_config)
@@ -494,16 +514,10 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         return result
 
-    def configure_evaluate(
-        self,
-        server_round,
-        parameters,
-        client_manager,
-    ):
+    def configure_evaluate(self, server_round, parameters, client_manager):
         self._refresh_exclusion()
         self._reduce_quorum_for_exclusions()
 
-        # Unregister permanently excluded clients from Flower client_manager
         if self.excluded_cids:
             all_cm_clients = client_manager.all()
             for exc_cid in list(self.excluded_cids):
@@ -513,13 +527,8 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                     except Exception:
                         pass
 
-        config = {
-            "server_round": server_round
-        }
-        evaluate_ins = fl.common.EvaluateIns(
-            parameters,
-            config
-        )
+        config: Dict[str, Scalar] = {"server_round": server_round}
+        evaluate_ins = fl.common.EvaluateIns(parameters, config)
         available_clients = client_manager.num_available()
         sample_size = min(self.min_evaluate_clients, available_clients)
 
@@ -528,40 +537,13 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             min_num_clients=self.min_available_clients
         )
 
-        # ── Filter out permanently excluded clients from evaluation ────────────
         if self.excluded_cids:
-            before = len(clients)
             clients = [c for c in clients if c.cid not in self.excluded_cids]
-            if before != len(clients):
-                print(
-                    f"[EXCL] configure_evaluate Round {server_round}: "
-                    f"removed {before - len(clients)} excluded client(s) from eval list"
-                )
 
-        return [
-            (client, evaluate_ins)
-            for client in clients
-        ]
+        return [(client, evaluate_ins) for client in clients]
 
-    # --------------------------------------------------
-    # Aggregate Fit
-    # --------------------------------------------------
-
-    def aggregate_fit(
-        self,
-        server_round,
-        results,
-        failures,
-    ):
-
+    def aggregate_fit(self, server_round, results, failures):
         aggregation_start = time.perf_counter()
-
-        # ==========================================================
-        # DEQUANTIZE / NORMALIZE CLIENT PARAMETERS
-        # ==========================================================
-        # Auto-detect whether incoming updates are INT8-quantized or FP32.
-        # This prevents FedAvg shape mismatch errors (e.g. (32,1,3,3) vs (5,))
-        # even if clients and server have mixed quantization settings.
         dequantized_results = []
 
         for client_proxy, fit_res in results:
@@ -569,14 +551,11 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 raw_params = parameters_to_ndarrays(fit_res.parameters)
                 client_metric_quant = fit_res.metrics.get("is_quantized", None)
 
-                # Determine if this client update is quantized
                 if client_metric_quant is True:
                     is_quant = True
                 elif client_metric_quant is False:
                     is_quant = False
                 else:
-                    # Auto-detect: quantized models alternate (metadata: float32, q: int8)
-                    # For ChestCNN (8 layers), quantized has 16 arrays and raw_params[1].dtype == int8.
                     is_quant = (
                         len(raw_params) > 0
                         and len(raw_params) % 2 == 0
@@ -588,19 +567,14 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                     fit_res.parameters = ndarrays_to_parameters(fp32_parameters)
                     dequantized_results.append((client_proxy, fit_res))
                 else:
-                    # Already FP32
                     dequantized_results.append((client_proxy, fit_res))
             except Exception as e:
-                print(f"[Server] Error processing/dequantizing update from client {client_proxy.cid}: {e}")
+                print(f"[Server] Error processing update from client {client_proxy.cid}: {e}")
 
-        # ==========================================================
-        # TRUST MODULE: record update behaviour per client (Stage 1)
-        # Wrapped in try/except — FL training continues even if this fails
-        # ==========================================================
         if _TRUST_OK:
             try:
                 for _cp, _fit_res in dequantized_results:
-                    _cname   = _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
+                    _cname = _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
                     _cndarrs = parameters_to_ndarrays(_fit_res.parameters)
                     _tm.record_update(_cname, _cndarrs, _cp.cid, _fit_res.metrics)
                 for _fail in failures:
@@ -611,82 +585,36 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             except Exception as _e:
                 print(f"[TrustManager] aggregate_fit warning: {_e}")
 
-        # ── Drop updates from any reconnected permanently excluded clients ────
+        # Drop updates from any reconnected permanently excluded clients
         clean_dequantized = []
         for _cp, _fit_res in dequantized_results:
             _cname = _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
             if _cname in self.excluded_names:
-                print(
-                    f"\n[EXCL] RECONNECTION BLOCKED: {_cname} (CID: {_cp.cid}) is "
-                    f"PERMANENTLY EXCLUDED. Discarding update from aggregation."
-                )
                 self.excluded_cids.add(_cp.cid)
-                if _TRUST_OK:
-                    _tm.cid_to_name[_cp.cid] = _cname
                 continue
             clean_dequantized.append((_cp, _fit_res))
         dequantized_results = clean_dequantized
 
-        # ==========================================================
-        # PRE-AGGREGATION TRUST GATE
-        # ──────────────────────────────────────────────────────────
-        # After recording all client updates, apply the pre-aggregation
-        # gating decision BEFORE calling FedAvg.
-        #
-        # WHY SEPARATE FROM FEDAVG?
-        # - A quarantined/rejected client's update must NOT enter FedAvg.
-        #   Passing it to super().aggregate_fit() would contaminate the
-        #   global model before any unlearning/recovery can act.
-        # - The existing DACM distribution audit block below this still
-        #   runs on ALL clients (including quarantined) so it can detect
-        #   distribution shifts across the full federation.
-        # - FedAvg continues to use sample-count weighting for accepted
-        #   clients — Trust Score is NOT used as a FedAvg weight.
-        #
-        # QUARANTINE → EXISTING DACM/UNLEARNING:
-        # - Quarantined clients are excluded from FedAvg this round.
-        # - The in-round DACM distribution audit (below) handles recovery
-        #   weight computation for the next round.
-        # - Post-training: run_unlearn_workflow() (unlearn_server.py) is
-        #   available unchanged for full unlearning + DACM recovery.
-        # ==========================================================
-        accepted_results    = []
+        # Pre-Aggregation Trust Gate
+        accepted_results = []
         quarantined_results = []
-        rejected_results    = []
+        rejected_results = []
 
         if _TRUST_OK:
             try:
                 _decisions = _tm.get_pre_agg_decisions()
-
-                if _decisions:
-                    print("\n" + "=" * 60)
-                    print(f"  PRE-AGGREGATION TRUST GATE — Round {server_round}")
-                    print("=" * 60)
-
                 for _cp, _fit_res in dequantized_results:
                     _cname = _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
-                    _dec   = _decisions.get(_cname, "ACCEPT")
+                    _dec = _decisions.get(_cname, "ACCEPT")
 
                     if _dec == "ACCEPT":
                         accepted_results.append((_cp, _fit_res))
-                        if _decisions:
-                            print(f"  {_cname:<20} → ✅ ACCEPT   (enters FedAvg)")
                     elif _dec == "QUARANTINE":
                         quarantined_results.append((_cp, _fit_res))
-                        # Accumulate for post-training unlearning (fired after final round)
                         self.quarantined_clients.add(_cname)
-                        print(f"  {_cname:<20} -> QUARANTINE (excluded from FedAvg; "
-                              f"scheduled for post-training unlearning after round {self.total_rounds})")
-                    else:  # REJECT
+                    else:
                         rejected_results.append((_cp, _fit_res))
-                        print(f"  {_cname:<20} -> REJECT    (excluded from aggregation)")
 
-                if _decisions:
-                    print("=" * 60)
-
-                # ── Persistent exclusion:
-                # 1. SUSPICIOUS + QUARANTINE -> Permanent Exclusion
-                # 2. UNTRUSTED + (QUARANTINE or REJECT) -> Permanent Exclusion
                 _newly_quarantined_names = {
                     _fit_res.metrics.get("client_name", f"Client_{_cp.cid[:8]}")
                     for _cp, _fit_res in quarantined_results
@@ -703,176 +631,63 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                     )
                     if _newly_excluded:
                         self.excluded_names.update(_newly_excluded)
-                        # Immediately refresh cid mapping so subsequent rounds
-                        # have the correct excluded_cids set.
                         self.excluded_cids = _get_excluded_cids(self.excluded_names)
-                        # Adjust Flower quorum right away so the next round's
-                        # configure_fit doesn't block on the excluded client.
                         self._reduce_quorum_for_exclusions()
 
-                # Handle edge cases
                 if not accepted_results:
-                    if quarantined_results:
-                        # All clients quarantined — fall back to accepting all to prevent
-                        # a round with zero updates (catastrophic failure mode).
-                        print("[TRUST GATE] WARNING: All clients quarantined/rejected.")
-                        print("[TRUST GATE] Falling back to accepting all updates to prevent round failure.")
-                        print("[TRUST GATE] Review anomaly thresholds in PRE_AGG_CONFIG.")
-                        accepted_results = dequantized_results
-                        quarantined_results = []
-                    elif rejected_results:
-                        print("[TRUST GATE] WARNING: All clients rejected — no valid updates.")
-                        print("[TRUST GATE] Falling back to accepting all to prevent catastrophic failure.")
-                        accepted_results = dequantized_results
-                        rejected_results = []
-
+                    accepted_results = dequantized_results
             except Exception as _ge:
-                print(f"[TRUST GATE] Warning: {_ge} — using all dequantized results")
-                accepted_results    = dequantized_results
-                quarantined_results = []
+                accepted_results = dequantized_results
         else:
-            # Trust module not loaded — pass all updates to FedAvg normally
             accepted_results = dequantized_results
 
-        # Log gate summary
-        if quarantined_results or rejected_results:
-            _n_acc  = len(accepted_results)
-            _n_quar = len(quarantined_results)
-            _n_rej  = len(rejected_results)
-            print(f"[TRUST GATE] FedAvg input: {_n_acc} ACCEPTED, "
-                  f"{_n_quar} QUARANTINED, {_n_rej} REJECTED")
-
-        # ==========================================================
-        # FEDAVG (only accepted clients)
-        # ==========================================================
-        aggregated_parameters, aggregated_metrics = (
-            super().aggregate_fit(
-                server_round,
-                accepted_results,   # ← only ACCEPTED updates enter FedAvg
-                failures,
-            )
+        aggregated_parameters, aggregated_metrics = super().aggregate_fit(
+            server_round,
+            accepted_results,
+            failures,
         )
 
-        # ==========================================================
-        # AGGREGATION TIME & METRICS
-        # ==========================================================
         aggregation_time = (time.perf_counter() - aggregation_start)
         successful_clients = len(dequantized_results)
         failed_clients = len(failures)
+        round_time = (time.perf_counter() - round_start_times[server_round]) if server_round in round_start_times else 0
 
-        if server_round in round_start_times:
-            round_time = (time.perf_counter() - round_start_times[server_round])
-        else:
-            round_time = 0
+        # Store current aggregated parameters and round number for exact checkpoint binding
+        self.current_round_parameters = aggregated_parameters
+        self.current_round_number = server_round
 
-        # ==========================================================
-        # DACM: DISTRIBUTION AUDIT & DYNAMIC CALCULATION
-        # ==========================================================
+        # DACM Distribution Audit
         total_normal = 0
         total_pneumonia = 0
-        
-        # Extract DP counts reported by all successful clients
         for _, fit_res in results:
-            total_normal += fit_res.metrics.get("normal_count", 0)
-            total_pneumonia += fit_res.metrics.get("pneumonia_count", 0)
-            
+            normal_count = fit_res.metrics.get("normal_count", 0)
+            pneumonia_count = fit_res.metrics.get("pneumonia_count", 0)
+            if isinstance(normal_count, (int, float)):
+                total_normal += normal_count
+            if isinstance(pneumonia_count, (int, float)):
+                total_pneumonia += pneumonia_count
+
         total = total_normal + total_pneumonia
         if total > 0:
             gamma = total_pneumonia / total
-            print("\n" + "=" * 60)
-            print(f"[DACM Server Audit] Surviving Pneumonia Ratio: {gamma*100:.2f}%")
-            
             tau_safe = 0.50
             if gamma < tau_safe:
-                # Calculate compensation penalty
                 alpha = 3.0
                 self.dacm_recovery_weight = 1.0 + alpha * math.log(tau_safe / gamma)
-                print(f"[DACM ALERT] Minority class shortage detected (< {tau_safe*100:.0f}%)")
-                print(f"[DACM LOGIC] Broadcasting recovery weight for next round: {self.dacm_recovery_weight:.4f}")
             else:
                 self.dacm_recovery_weight = 1.0
-                print(f"[DACM LOGIC] Distribution safe. Standard training continues.")
-            print("=" * 60)
 
-        # ==========================================================
-        # PRINT RESULTS
-        # ==========================================================
-        print("\n")
-        print("=" * 60)
-        print(f"Round {server_round} completed")
-        print("=" * 60)
-        print(f"Successful Clients: {successful_clients}")
-        print(f"Failed Clients: {failed_clients}")
-        print(f"Dequantization + Aggregation Time: {aggregation_time:.4f} sec")
-        print(f"Total Round Time: {round_time:.4f} sec")
-
-        # ==========================================================
-        # SAVE GLOBAL MODEL
-        # ==========================================================
-        if aggregated_parameters is not None:
-            model = ChestCNN()
-            params = parameters_to_ndarrays(aggregated_parameters)
-            params_dict = zip(model.state_dict().keys(), params)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            
-            model.load_state_dict(state_dict, strict=True)
-
-            # Save final global model
-            if server_round == TOTAL_ROUNDS:
-                torch.save(model.state_dict(), MODEL_PATH)
-
-                print("\n")
-                print("=" * 60)
-                print("Global Model Saved Successfully")
-                print(MODEL_PATH)
-                print("=" * 60)
-
-                # ============================================================
-                # AUTO-TRIGGER: Post-Training Unlearning for Excluded/Quarantined Clients
-                # ============================================================
-                # This fires AFTER the final-round checkpoint is saved, so the
-                # unlearning pipeline always loads a clean, fully-converged model.
-                #
-                # Quarantine (above) only excluded the client from the CURRENT
-                # round's FedAvg. The client's contributions from earlier rounds
-                # are still present in the saved checkpoint. Gradient-ascent
-                # unlearning + DACM recovery removes that historical influence.
-                # ============================================================
-                targets_to_unlearn = self.quarantined_clients | self.excluded_names
-                if targets_to_unlearn:
-                    # Pass the surviving active clients (KNOWN_CLIENTS minus
-                    # those permanently excluded) so DACM recovery only involves
-                    # clients that are genuinely still in the federation.
-                    _surviving_clients = KNOWN_CLIENTS - self.excluded_names
-                    _trigger_post_training_unlearning(
-                        quarantined_clients=targets_to_unlearn,
-                        suffix=SUFFIX,
-                        active_clients=_surviving_clients,
-                    )
-                else:
-                    print("[AUTO-UNLEARN] No quarantined or excluded clients detected — "
-                          "post-training unlearning not required.")
-
-        # ==========================================================
-        # SAVE ROUND METRICS
-        # ==========================================================
-        round_data = pd.DataFrame(
-            [[
-                server_round,
-                successful_clients,
-                failed_clients,
-                aggregation_time,
-                round_time
-            ]],
-            columns=[
-                "Round",
-                "Successful_Clients",
-                "Failed_Clients",
-                "Aggregation_Time_sec",
-                "Total_Round_Time_sec"
-            ]
-        )
-
+        # Round timing record
+        round_data = pd.DataFrame([[
+            server_round,
+            successful_clients,
+            failed_clients,
+            aggregation_time,
+            round_time
+        ]], columns=[
+            "Round", "Successful_Clients", "Failed_Clients",
+            "Aggregation_Time_sec", "Total_Round_Time_sec"
+        ])
         round_data.to_csv(
             ROUND_METRICS_FILE,
             mode="a",
@@ -882,139 +697,239 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         return (aggregated_parameters, aggregated_metrics)
 
+    def aggregate_evaluate(self, server_round, results, failures):
+        """
+        Aggregate validation evaluation results from hospital clients.
+        Performs exact checkpoint selection and checks early-stopping criteria.
+        """
+        if not results:
+            return None, {}
+
+        metrics_list = [(res.num_examples, res.metrics) for _, res in results]
+        total_examples = sum(num_examples for num_examples, _ in metrics_list)
+
+        def metric_float(metrics: Dict[str, Scalar], key: str, default: float = 0.0) -> float:
+            value = metrics.get(key, default)
+            return float(value) if isinstance(value, (int, float)) else default
+
+        pooled_tp = sum(metric_float(m, "tp") for _, m in metrics_list)
+        pooled_tn = sum(metric_float(m, "tn") for _, m in metrics_list)
+        pooled_fp = sum(metric_float(m, "fp") for _, m in metrics_list)
+        pooled_fn = sum(metric_float(m, "fn") for _, m in metrics_list)
+        pooled_loss_sum = sum(
+            metric_float(m, "loss_sum", metric_float(m, "loss") * num_examples)
+            for num_examples, m in metrics_list
+        )
+
+        weighted_accuracy = (pooled_tp + pooled_tn) / total_examples if total_examples > 0 else 0.0
+        weighted_loss = pooled_loss_sum / total_examples if total_examples > 0 else 0.0
+        weighted_precision = pooled_tp / (pooled_tp + pooled_fp) if (pooled_tp + pooled_fp) > 0 else 0.0
+        weighted_recall = pooled_tp / (pooled_tp + pooled_fn) if (pooled_tp + pooled_fn) > 0 else 0.0
+        weighted_f1 = (2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)) if (weighted_precision + weighted_recall) > 0 else 0.0
+
+        print("\n" + "=" * 56)
+        print(f"  GLOBAL ROUND {server_round} VALIDATION RESULTS")
+        print("=" * 56)
+        print(f"  Clients Evaluated   : {len(results)}")
+        print(f"  Total Val Samples   : {total_examples}")
+        print(f"  Pooled Accuracy     : {weighted_accuracy * 100:.2f}%")
+        print(f"  Pooled Loss         : {weighted_loss:.4f}")
+        print(f"  Pooled F1 Score     : {weighted_f1:.4f}")
+        print(f"  Pooled Precision    : {weighted_precision:.4f}")
+        print(f"  Pooled Recall       : {weighted_recall:.4f}")
+        print("=" * 56)
+
+        # Save to global and run-specific metrics files
+        df_round = pd.DataFrame([[
+            server_round, weighted_accuracy, weighted_loss,
+            weighted_f1, weighted_precision, weighted_recall,
+            pooled_tp, pooled_tn, pooled_fp, pooled_fn
+        ]], columns=[
+            "Round", "Accuracy", "Loss", "F1", "Precision", "Recall", "TP", "TN", "FP", "FN"
+        ])
+        df_round.to_csv(
+            METRICS_FILE,
+            mode="a",
+            header=not os.path.exists(METRICS_FILE),
+            index=False
+        )
+        df_round.to_csv(
+            self.run_manager.round_metrics_path,
+            mode="a",
+            header=not os.path.exists(self.run_manager.round_metrics_path),
+            index=False
+        )
+
+        # ==========================================================
+        # EXACT CHECKPOINT SELECTION & ATOMIC PERSISTENCE
+        # ==========================================================
+        if self.current_round_parameters is not None:
+            model = ChestCNN()
+            params = parameters_to_ndarrays(self.current_round_parameters)
+            params_dict = zip(model.state_dict().keys(), params)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            model.load_state_dict(state_dict, strict=True)
+
+            improvement = self.best_val_loss - weighted_loss
+            if improvement >= self.early_stopping_min_delta:
+                print(f"[CHECKPOINT] Validation loss improved from {self.best_val_loss:.4f} to {weighted_loss:.4f} (delta={improvement:.4f} >= {self.early_stopping_min_delta:.4f}).")
+                self.best_val_loss = weighted_loss
+                self.best_val_acc = weighted_accuracy
+                self.best_round = server_round
+                self.patience_counter = 0
+
+                best_meta = {
+                    "run_id": self.run_manager.run_id,
+                    "round": server_round,
+                    "validation_metrics": {
+                        "loss": weighted_loss,
+                        "accuracy": weighted_accuracy,
+                        "f1": weighted_f1,
+                        "precision": weighted_precision,
+                        "recall": weighted_recall
+                    }
+                }
+                save_checkpoint_atomic(model.state_dict(), self.run_manager.best_model_path, metadata=best_meta)
+                self.run_manager.update_best(server_round, weighted_loss, weighted_accuracy)
+                print(f"[CHECKPOINT] Atomically saved best model: {self.run_manager.best_model_path}")
+            else:
+                self.patience_counter += 1
+                print(f"[EARLY STOPPING] No sufficient improvement ({improvement:.4f} < {self.early_stopping_min_delta:.4f}). Patience: {self.patience_counter}/{self.early_stopping_patience}")
+
+                # Check Early Stopping
+                if (
+                    self.early_stopping_enabled
+                    and server_round >= self.min_rounds
+                    and self.patience_counter >= self.early_stopping_patience
+                ):
+                    self.early_stop_triggered = True
+                    self.early_stop_reason = (
+                        f"Validation loss did not improve by {self.early_stopping_min_delta} "
+                        f"for {self.early_stopping_patience} consecutive rounds after round {self.min_rounds}"
+                    )
+                    print("\n" + "!" * 62)
+                    print(f"  EARLY STOPPING TRIGGERED AT ROUND {server_round}")
+                    print(f"  Reason: {self.early_stop_reason}")
+                    print(f"  Best round was round {self.best_round} (Loss: {self.best_val_loss:.4f})")
+                    print("!" * 62 + "\n")
+
+            # Always save final model on last round or early stopping
+            if server_round == self.total_rounds or self.early_stop_triggered:
+                final_meta = {
+                    "run_id": self.run_manager.run_id,
+                    "final_round": server_round,
+                    "best_round": self.best_round,
+                    "final_metrics": {
+                        "loss": weighted_loss,
+                        "accuracy": weighted_accuracy,
+                        "f1": weighted_f1
+                    }
+                }
+                save_checkpoint_atomic(model.state_dict(), self.run_manager.final_model_path, metadata=final_meta)
+                save_checkpoint_atomic(model.state_dict(), MODEL_PATH, metadata=final_meta)
+                print(f"[CHECKPOINT] Saved final model checkpoint: {self.run_manager.final_model_path}")
+
+                targets_to_unlearn = self.quarantined_clients | self.excluded_names
+                if targets_to_unlearn:
+                    _surviving_clients = KNOWN_CLIENTS - self.excluded_names
+                    _trigger_post_training_unlearning(
+                        quarantined_clients=targets_to_unlearn,
+                        suffix=SUFFIX,
+                        active_clients=_surviving_clients,
+                    )
+
+        # Trust Module recording
+        if _TRUST_OK:
+            try:
+                for _num_ex, _m in metrics_list:
+                    _cname = _m.get("client_name", "Unknown")
+                    if _cname == "Unknown":
+                        continue
+                    _tm.record_evaluation(
+                        client_name=str(_cname),
+                        accuracy=float(_m.get("accuracy", 0.0)),
+                        loss=float(_m.get("loss", 0.0)),
+                        f1=float(_m.get("f1", 0.0)),
+                        precision=float(_m.get("precision", 0.0)),
+                        recall=float(_m.get("recall", 0.0)),
+                        num_examples=int(_num_ex),
+                    )
+                _tm.finalize_round(server_round)
+            except Exception as _e:
+                print(f"[TrustManager] evaluate_metrics warning: {_e}")
+
+        return weighted_loss, {
+            "accuracy": weighted_accuracy,
+            "loss": weighted_loss,
+            "f1": weighted_f1,
+            "precision": weighted_precision,
+            "recall": weighted_recall,
+        }
+
 
 # --------------------------------------------------
-# Evaluation Metrics
-# --------------------------------------------------
-
-def evaluate_metrics_aggregation_fn(metrics):
-
-    total_examples = sum(num_examples for num_examples, _ in metrics)
-
-    weighted_accuracy = (
-        sum(num_examples * m["accuracy"] for num_examples, m in metrics)
-        / total_examples
-    )
-
-    weighted_loss = (
-        sum(num_examples * m["loss"] for num_examples, m in metrics)
-        / total_examples
-    )
-
-    # --------------------------------------------------
-    # Weighted F1 / Precision / Recall (if clients sent them)
-    # --------------------------------------------------
-    has_f1 = all("f1" in m for _, m in metrics)
-
-    if has_f1:
-        weighted_f1 = sum(num_examples * m["f1"] for num_examples, m in metrics) / total_examples
-        weighted_precision = sum(num_examples * m["precision"] for num_examples, m in metrics) / total_examples
-        weighted_recall = sum(num_examples * m["recall"] for num_examples, m in metrics) / total_examples
-    else:
-        weighted_f1 = 0.0
-        weighted_precision = 0.0
-        weighted_recall = 0.0
-
-    # --------------------------------------------------
-    # Determine round number for CSV
-    # --------------------------------------------------
-    if os.path.exists(METRICS_FILE):
-        df_old = pd.read_csv(METRICS_FILE)
-        next_round = len(df_old) + 1
-    else:
-        next_round = 1
-
-    # --------------------------------------------------
-    # Save accuracy / loss
-    # --------------------------------------------------
-    df = pd.DataFrame(
-        [[next_round, weighted_accuracy, weighted_loss]],
-        columns=["Round", "Accuracy", "Loss"]
-    )
-
-    df.to_csv(
-        METRICS_FILE,
-        mode="a",
-        header=not os.path.exists(METRICS_FILE),
-        index=False
-    )
-    # --------------------------------------------------
-    # Demo-friendly round results banner
-    # --------------------------------------------------
-    print("\n")
-    print("=" * 56)
-    print(f"  GLOBAL ROUND {next_round} RESULTS")
-    print("=" * 56)
-    print(f"  Clients Evaluated   : {len(metrics)}")
-    print(f"  Global Accuracy     : {weighted_accuracy * 100:.2f}%")
-    print(f"  Global Loss         : {weighted_loss:.4f}")
-    if has_f1:
-        print(f"  F1 Score            : {weighted_f1:.4f}")
-        print(f"  Precision           : {weighted_precision:.4f}")
-        print(f"  Recall              : {weighted_recall:.4f}")
-    else:
-        print("  F1 / Precision / Recall : N/A (metrics not returned by clients)")
-    print("=" * 56)
-
-    # ==========================================================
-    # TRUST MODULE: record evaluation and finalise trust scores
-    # Wrapped in try/except — does NOT affect FL accuracy/loss return
-    # ==========================================================
-    if _TRUST_OK:
-        try:
-            for _num_ex, _m in metrics:
-                _cname = _m.get("client_name", "Unknown")
-                if _cname == "Unknown":
-                    continue
-                _tm.record_evaluation(
-                    client_name  = _cname,
-                    accuracy     = float(_m.get("accuracy",  0.0)),
-                    loss         = float(_m.get("loss",      0.0)),
-                    f1           = float(_m.get("f1",        0.0)),
-                    precision    = float(_m.get("precision", 0.0)),
-                    recall       = float(_m.get("recall",    0.0)),
-                    num_examples = int(_num_ex),
-                )
-            _tm.finalize_round(next_round)
-        except Exception as _e:
-            print(f"[TrustManager] evaluate_metrics warning: {_e}")
-
-    return {
-        "accuracy":  weighted_accuracy,
-        "loss":      weighted_loss,
-        "f1":        weighted_f1,
-        "precision": weighted_precision,
-        "recall":    weighted_recall,
-    }
-# --------------------------------------------------
-# Main
+# Main Server Runner
 # --------------------------------------------------
 
 if __name__ == "__main__":
+    from dropout_handler import AdaptiveServer
 
-    import math
-    from federated_healthcare.src.dropout_handler import AdaptiveServer
-    
-    # Configure TARGET and MIN clients
     TARGET_CLIENTS = int(os.environ.get("TARGET_CLIENTS", "3"))
     MIN_CLIENTS = max(2, math.ceil(0.6 * TARGET_CLIENTS))
 
-    _init_params = _load_initial_parameters()
+    # Initialize model (Fresh or Warm-Start with verification)
+    init_model, init_params, parent_id, parent_run = setup_initial_model(
+        training_mode=TRAINING_MODE,
+        init_path_str=INIT_MODEL_PATH_ENV,
+        allow_random=ALLOW_RANDOM_FALLBACK,
+        manager=run_manager,
+        target_device=device
+    )
+
+    # Initialize Run Configuration
+    run_config = {
+        "run_id": run_manager.run_id,
+        "training_mode": TRAINING_MODE,
+        "parent_model_id": parent_id,
+        "parent_run_id": parent_run,
+        "total_rounds": TOTAL_ROUNDS,
+        "target_clients": TARGET_CLIENTS,
+        "min_clients": MIN_CLIENTS,
+        "use_dp": USE_DP,
+        "use_quantization": USE_QUANTIZATION,
+        "early_stopping_enabled": EARLY_STOPPING_ENABLED,
+        "early_stopping_patience": EARLY_STOPPING_PATIENCE,
+        "early_stopping_min_delta": EARLY_STOPPING_MIN_DELTA,
+        "min_rounds": MIN_ROUNDS,
+        "dataset_version": os.environ.get("DATASET_VERSION", "dataset_v001")
+    }
+    run_manager.init_run(run_config)
+
+    # Initial Baseline Validation Evaluation before Round 1
+    init_eval_results = run_initial_baseline_evaluation(
+        initial_model=init_model,
+        hospital_ids=list(KNOWN_CLIENTS),
+        manager=run_manager,
+        target_device=device
+    )
+
     strategy = SaveModelStrategy(
+        run_manager_inst=run_manager,
+        total_rounds=TOTAL_ROUNDS,
+        early_stopping_enabled=EARLY_STOPPING_ENABLED,
+        early_stopping_patience=EARLY_STOPPING_PATIENCE,
+        early_stopping_min_delta=EARLY_STOPPING_MIN_DELTA,
+        min_rounds=MIN_ROUNDS,
         fraction_fit=1.0,
         fraction_evaluate=1.0,
         min_fit_clients=TARGET_CLIENTS,
         min_evaluate_clients=TARGET_CLIENTS,
         min_available_clients=MIN_CLIENTS,
-        evaluate_metrics_aggregation_fn=(
-            evaluate_metrics_aggregation_fn
-        ),
-        initial_parameters=_init_params,
+        initial_parameters=init_params,
     )
 
     client_manager = fl.server.SimpleClientManager()
-    
-    # DP-SGD is much slower, so we need much larger timeouts
+
     if USE_DP:
         default_hard_deadline = 180.0
         default_round_timeout = 1800.0
@@ -1036,31 +951,23 @@ if __name__ == "__main__":
         beta=0.3,
         k=1.0,
         suffix=SUFFIX,
-        models_dir=MODEL_DIR
+        models_dir=str(MODEL_DIR)
     )
 
-    # Bind address: default 0.0.0.0 (all network interfaces, reachable by remote clients).
-    # Override with FL_SERVER_BIND if you need to bind to a specific interface.
-    # Override with FL_PORT if you need a non-default port.
-    # Do NOT set this to 'localhost' or '127.0.0.1' in a real multi-device deployment —
-    # remote hospital clients would not be able to connect.
     FL_SERVER_BIND = os.environ.get("FL_SERVER_BIND", "0.0.0.0")
     FL_PORT = int(os.environ.get("FL_PORT", "8080"))
     bind_address = f"{FL_SERVER_BIND}:{FL_PORT}"
 
-    print(f"Starting Adaptive Flower Server with Dropout Handling...")
+    print(f"Starting Periodic Retraining Federated Server...")
+    print(f"  Run ID              : {run_manager.run_id}")
+    print(f"  Training Mode       : {TRAINING_MODE}")
     print(f"  Binding on          : {bind_address}")
     print(f"  Target clients      : {TARGET_CLIENTS}")
     print(f"  Minimum clients     : {MIN_CLIENTS}")
     print(f"  FL rounds           : {TOTAL_ROUNDS}")
-    print(f"  Round timeout       : {ROUND_TIMEOUT} sec")
-    print(f"  Dropout hard limit  : {DROPOUT_HARD_DEADLINE} sec")
+    print(f"  Early Stopping      : {EARLY_STOPPING_ENABLED} (patience={EARLY_STOPPING_PATIENCE}, min_delta={EARLY_STOPPING_MIN_DELTA}, min_rounds={MIN_ROUNDS})")
     print(f"  DP enabled          : {USE_DP}")
     print(f"  Quantization        : {USE_QUANTIZATION}")
-    print()
-    print(f"  Remote hospital clients should connect with:")
-    print(f"    SERVER_ADDRESS=<this-machine-LAN-IP>:{FL_PORT}")
-    print(f"    python federated_healthcare/src/client.py")
     print()
 
     fl.server.start_server(
@@ -1072,3 +979,96 @@ if __name__ == "__main__":
         ),
         grpc_max_message_length=1024*1024*1024
     )
+
+    # --------------------------------------------------
+    # POST-TRAINING FINAL INDEPENDENT TESTING
+    # --------------------------------------------------
+    print("\n" + "=" * 65)
+    print("  FINAL INDEPENDENT TEST EVALUATION (RESERVED TEST COHORT)")
+    print("=" * 65)
+
+    gate = ModelApprovalGate(APPROVED_MODELS_DIR)
+    selected_ckpt = run_manager.best_model_path if run_manager.best_model_path.exists() else run_manager.final_model_path
+
+    test_results = gate.evaluate_checkpoint_on_data(
+        checkpoint_path=selected_ckpt,
+        hospital_ids=list(KNOWN_CLIENTS),
+        split="test",
+        device=device
+    )
+
+    test_rows = []
+    for h_id, m in sorted(test_results["per_hospital"].items()):
+        test_rows.append({
+            "client": h_id,
+            "sample_count": m["total"],
+            "correct": m["correct"],
+            "incorrect": m["total"] - m["correct"],
+            "tp": m["tp"],
+            "tn": m["tn"],
+            "fp": m["fp"],
+            "fn": m["fn"],
+            "loss": m["loss"],
+            "accuracy": m["accuracy"],
+            "precision": m["precision"],
+            "recall": m["recall"],
+            "f1": m["f1"]
+        })
+        print(f"  {h_id:<14} | Samples: {m['total']:<4} | Acc: {m['accuracy']*100:.2f}% | Loss: {m['loss']:.4f} | F1: {m['f1']:.4f} | Rec: {m['recall']:.4f}")
+
+    p_test = test_results["pooled"]
+    test_rows.append({
+        "client": "POOLED_GLOBAL",
+        "sample_count": p_test["total"],
+        "correct": "",
+        "incorrect": "",
+        "tp": "",
+        "tn": "",
+        "fp": "",
+        "fn": "",
+        "loss": p_test["loss"],
+        "accuracy": p_test["accuracy"],
+        "precision": p_test["precision"],
+        "recall": p_test["recall"],
+        "f1": p_test["f1"]
+    })
+    print("-" * 65)
+    print(f"  POOLED TEST    | Samples: {p_test['total']:<4} | Acc: {p_test['accuracy']*100:.2f}% | Loss: {p_test['loss']:.4f} | F1: {p_test['f1']:.4f} | Rec: {p_test['recall']:.4f}")
+    print("=" * 65 + "\n")
+
+    test_df = pd.DataFrame(test_rows)
+    test_df.to_csv(run_manager.final_test_metrics_path, index=False)
+
+    # --------------------------------------------------
+    # MODEL APPROVAL WORKFLOW
+    # --------------------------------------------------
+    baseline_metrics = None
+    if gate.approved_model_path.exists():
+        try:
+            baseline_metrics = gate.evaluate_checkpoint_on_data(
+                checkpoint_path=gate.approved_model_path,
+                hospital_ids=list(KNOWN_CLIENTS),
+                split="test",
+                device=device
+            )
+        except Exception as bex:
+            print(f"[APPROVAL] Warning: Could not evaluate existing approved baseline: {bex}")
+
+    promoted, decision_reason = gate.decide_and_apply(
+        candidate_path=selected_ckpt,
+        candidate_metrics=test_results,
+        run_id=run_manager.run_id,
+        baseline_metrics=baseline_metrics
+    )
+
+    run_manager.finalize(
+        final_round=strategy.current_round_number,
+        early_stopped=strategy.early_stop_triggered,
+        early_stopping_reason=strategy.early_stop_reason,
+        final_test_metrics=p_test
+    )
+    run_manager.metadata["promotion_result"] = "PROMOTED" if promoted else "REJECTED"
+    run_manager.metadata["promotion_reason"] = decision_reason
+    run_manager.save_metadata()
+
+    print(f"\n[Server] Retraining cycle finished successfully for Run {run_manager.run_id}!")

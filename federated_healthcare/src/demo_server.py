@@ -160,8 +160,12 @@ print()
 import flwr as fl
 from federated_healthcare.src.server import (
     SaveModelStrategy,
-    evaluate_metrics_aggregation_fn,
-    _load_initial_parameters,
+    setup_initial_model,
+    run_manager,
+    device,
+    TRAINING_MODE,
+    INIT_MODEL_PATH_ENV,
+    ALLOW_RANDOM_FALLBACK,
     RESULTS_DIR,
     MODEL_DIR,
     MODEL_PATH,
@@ -173,14 +177,20 @@ from federated_healthcare.src.dropout_handler import AdaptiveServer
 # Build strategy (mirrors existing server.py __main__)
 # ------------------------------------------------------------------
 
-_init_params = _load_initial_parameters()
+_, _init_params, _, _ = setup_initial_model(
+    training_mode=TRAINING_MODE,
+    init_path_str=INIT_MODEL_PATH_ENV,
+    allow_random=ALLOW_RANDOM_FALLBACK,
+    manager=run_manager,
+    target_device=device,
+)
 strategy = SaveModelStrategy(
+    run_manager_inst=run_manager,
     fraction_fit=1.0,
     fraction_evaluate=1.0,
     min_fit_clients=TARGET_CLIENTS,
     min_evaluate_clients=MIN_CLIENTS,
     min_available_clients=MIN_CLIENTS,
-    evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
     initial_parameters=_init_params,
 )
 
@@ -197,7 +207,7 @@ server = AdaptiveServer(
     beta=0.3,
     k=1.0,
     suffix=SUFFIX,
-    models_dir=MODEL_DIR,
+    models_dir=str(MODEL_DIR),
     adaptive_dropout_enabled=(os.environ.get("ADAPTIVE_DROPOUT_ENABLED", "1") == "1"),
     fixed_deadline_control=(os.environ.get("FIXED_DEADLINE_CONTROL", "0") == "1")
 )

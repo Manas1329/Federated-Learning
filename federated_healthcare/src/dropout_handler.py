@@ -4,13 +4,13 @@ import pandas as pd
 import concurrent.futures
 import grpc
 import threading
-from typing import List, Tuple, Dict, Optional, Union
+from typing import Any, List, Tuple, Dict, Optional, Union, cast
 from flwr.server import Server
-from flwr.common import FitRes, EvaluateRes, DisconnectRes, FitIns, EvaluateIns
+from flwr.common import FitRes, DisconnectRes
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import Strategy
 
-from federated_healthcare.src.dropout_engine import AdaptiveDropoutDecisionEngine, ClientState
+from federated_healthcare.src.dropout_engine import AdaptiveDropoutDecisionEngine
 
 class AdaptiveServer(Server):
     """
@@ -54,6 +54,28 @@ class AdaptiveServer(Server):
         
         self.busy_clients = set()
         self._busy_lock = threading.Lock()
+        self._initial_round_complete = False
+        self._initialization_in_progress = False
+
+    def _wait_for_initial_clients(self, timeout: Optional[float]) -> None:
+        wait_timeout = int(os.environ.get(
+            "INITIAL_CLIENT_WAIT_TIMEOUT",
+            str(int(timeout)) if timeout is not None else "3600",
+        ))
+        print(
+            f"[AdaptiveServer] Waiting for all initial clients: "
+            f"{self.target_clients} required (timeout={wait_timeout}s)."
+        )
+        if not self._client_manager.wait_for(self.target_clients, wait_timeout):
+            connected = len(self._client_manager.all())
+            raise RuntimeError(
+                f"Initial client quorum not reached: {connected}/"
+                f"{self.target_clients} clients connected after {wait_timeout}s."
+            )
+        print(
+            f"[AdaptiveServer] Initial client quorum ready: "
+            f"{len(self._client_manager.all())}/{self.target_clients}."
+        )
 
     def _filter_drop_candidates_for_quorum(self, drop_candidates: List[Tuple], num_completed: int, num_outstanding: int) -> List[Tuple]:
         """
@@ -71,11 +93,79 @@ class AdaptiveServer(Server):
             
         return candidates_to_drop
 
+    def fit(self, num_rounds: int, timeout: Optional[float]):
+        """Run federated learning with early stopping support."""
+        import timeit
+        from logging import INFO
+        from flwr.common.logger import log
+        from flwr.server.history import History
+
+        history = History()
+
+        # Initialize parameters
+        log(INFO, "[INIT]")
+        self._initialization_in_progress = True
+        self._wait_for_initial_clients(timeout)
+        self.parameters = cast(Any, self._get_initial_parameters(server_round=0, timeout=timeout))
+        log(INFO, "Starting evaluation of initial global parameters")
+        res = self.strategy.evaluate(0, parameters=self.parameters)
+        if res is not None:
+            log(INFO, "initial parameters (loss, other metrics): %s, %s", res[0], res[1])
+            history.add_loss_centralized(server_round=0, loss=res[0])
+            history.add_metrics_centralized(server_round=0, metrics=res[1])
+
+        start_time = timeit.default_timer()
+
+        for current_round in range(1, num_rounds + 1):
+            if getattr(self.strategy, 'early_stop_triggered', False):
+                print(f"\n[AdaptiveServer] Early stopping triggered. Halting federated training at round {current_round - 1}.")
+                break
+
+            log(INFO, "")
+            log(INFO, "[ROUND %s]", current_round)
+            res_fit = self.fit_round(
+                server_round=current_round,
+                timeout=None if current_round == 1 else timeout,
+            )
+            if res_fit is not None:
+                parameters_prime, fit_metrics, _ = res_fit
+                if parameters_prime:
+                    self.parameters = cast(Any, parameters_prime)
+                history.add_metrics_distributed_fit(
+                    server_round=current_round, metrics=fit_metrics
+                )
+
+            res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
+            if res_cen is not None:
+                loss_cen, metrics_cen = res_cen
+                history.add_loss_centralized(server_round=current_round, loss=loss_cen)
+                history.add_metrics_centralized(server_round=current_round, metrics=metrics_cen)
+
+            res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
+            if res_fed is not None:
+                loss_fed, evaluate_metrics_fed, _ = res_fed
+                if loss_fed is not None:
+                    history.add_loss_distributed(
+                        server_round=current_round, loss=loss_fed
+                    )
+                    history.add_metrics_distributed(
+                        server_round=current_round, metrics=evaluate_metrics_fed
+                    )
+
+            if getattr(self.strategy, 'early_stop_triggered', False):
+                print(f"\n[AdaptiveServer] Early stopping triggered after evaluation of round {current_round}. Halting training.")
+                break
+
+        end_time = timeit.default_timer()
+        elapsed = end_time - start_time
+        self._initialization_in_progress = False
+        return history, elapsed
+
     def fit_round(
         self,
         server_round: int,
         timeout: Optional[float]
-    ) -> Optional[Tuple[Optional[List[Tuple[ClientProxy, FitRes]]], Dict, Tuple[List, List]]]:
+    ) -> Optional[Tuple[Any, Dict, Tuple[List, List]]]:
         """
         Overrides the default fit_round to implement the Adaptive Dropout logic.
         """
@@ -140,7 +230,7 @@ class AdaptiveServer(Server):
                 )
                 
                 def make_done_callback(client_id):
-                    def cb(fut):
+                    def cb(_):
                         with self._busy_lock:
                             if client_id in self.busy_clients:
                                 self.busy_clients.remove(client_id)
@@ -179,17 +269,17 @@ class AdaptiveServer(Server):
                         elif isinstance(res, DisconnectRes):
                             # DISCONNECT
                             self.engine.record_network_failure(cid)
-                            failures.append(res)
+                            failures.append(Exception("Client disconnected before returning FitRes"))
                             self._record_participation(cid, success=False)
                         else:
                             # OTHER FAILURE
                             self.engine.record_failure(cid)
-                            failures.append(res)
+                            failures.append(Exception("Client returned an unsupported fit result"))
                             self._record_participation(cid, success=False)
                             
                     except Exception as ex:
                         is_network_failure = False
-                        if isinstance(ex, grpc.RpcError) and hasattr(ex, 'code'):
+                        if isinstance(ex, grpc.RpcError):
                             code = ex.code()
                             if code == grpc.StatusCode.DEADLINE_EXCEEDED:
                                 timed_out_clients.append(cid)
@@ -206,7 +296,7 @@ class AdaptiveServer(Server):
                                 is_network_failure = True
                         
                         if is_network_failure:
-                            self.engine.record_network_failure(cid, reason=f"grpc code: {ex.code().name}")
+                            self.engine.record_network_failure(cid, reason=f"grpc code: {code.name}")
                         else:
                             self.engine.record_failure(cid, reason=str(ex))
                             
@@ -216,12 +306,16 @@ class AdaptiveServer(Server):
                 # If all expected target clients have completed, we can stop waiting for the rest
                 if len(results) >= self.target_clients:
                     print(f"\n[AdaptiveServer] TARGET REACHED ({len(results)}/{self.target_clients}).")
-                    for cid in [str(cp.cid) for future, (cp, _) in future_to_client.items()]:
+                    for cid in [str(cp.cid) for _, (cp, _) in future_to_client.items()]:
                         self.engine.record_not_required(cid)
                     break
 
                 # Ask the engine if we should keep waiting (if enabled)
-                if future_to_client and self.adaptive_dropout_enabled:
+                if (
+                    future_to_client
+                    and self.adaptive_dropout_enabled
+                    and not (server_round == 1 and self._initialization_in_progress)
+                ):
                     decisions = self.engine.evaluate_missing_clients()
                     
                     futures_to_cancel = []
@@ -247,7 +341,11 @@ class AdaptiveServer(Server):
                         failures.append(Exception("Dropped by Adaptive Dropout Engine"))
                         self._record_participation(str(client_proxy.cid), success=False)
                         
-                elif future_to_client and self.fixed_deadline_control:
+                elif (
+                    future_to_client
+                    and self.fixed_deadline_control
+                    and not (server_round == 1 and self._initialization_in_progress)
+                ):
                     if self.engine.get_elapsed_time() >= self.engine.hard_deadline:
                         if len(results) >= self.min_clients:
                             futures_to_cancel = list(future_to_client.keys())
@@ -318,7 +416,7 @@ class AdaptiveServer(Server):
         )
         if aggregated_result is not None:
             parameters_aggregated, metrics_aggregated = aggregated_result
-            self.parameters = parameters_aggregated
+            self.parameters = cast(Any, parameters_aggregated)
             
             # Save the successful global model to CSV
             participating = [str(r[0].cid) for r in results]

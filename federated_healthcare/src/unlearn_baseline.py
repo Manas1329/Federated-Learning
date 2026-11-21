@@ -1,17 +1,19 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from typing import Optional
 from model import ChestCNN
+from device_utils import get_device
 
 def execute_baseline_unlearning(
-    global_model_path,
+    global_model_path: str,
     target_loader: DataLoader,
     target_client: str = "Hospital_B",
-    surviving_loaders: list = None,
-    lr=1e-4,
-    unlearn_epochs=2,
-    finetune_epochs=1
-):
+    surviving_loaders: Optional[list[DataLoader]] = None,
+    lr: float = 1e-4,
+    unlearn_epochs: int = 2,
+    finetune_epochs: int = 1,
+) -> ChestCNN:
     """
     Perform gradient-ascent unlearning on `target_client`'s data.
 
@@ -33,7 +35,7 @@ def execute_baseline_unlearning(
     print(f"Target: Erasing {target_client}'s Contribution")
     print("=" * 60)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     print(f"Using device: {device}")
 
     # 1. Load the converged global FL model
@@ -48,7 +50,7 @@ def execute_baseline_unlearning(
     # Phase 1: Gradient Ascent on Target Client (The Erasure)
     # ==================================================
     print(f"\n[Phase 1] Executing Gradient Ascent on {target_client}'s data...")
-    for epoch in range(unlearn_epochs):
+    for _ in range(unlearn_epochs):
         for images, labels in target_loader:
             images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
@@ -68,7 +70,7 @@ def execute_baseline_unlearning(
     if finetune_epochs > 0 and surviving_loaders:
         print(f"\n[Phase 2] Executing Standard Fine-Tuning on {len(surviving_loaders)} surviving client(s)...")
         for loader in surviving_loaders:
-            for epoch in range(finetune_epochs):
+            for _ in range(finetune_epochs):
                 for images, labels in loader:
                     images, labels = images.to(device), labels.to(device)
                     optimizer.zero_grad()
@@ -124,4 +126,3 @@ if __name__ == "__main__":
     import torch
     torch.save(unlearned_model.state_dict(), save_path)
     print(f"\n[SUCCESS] Saved Unlearned Baseline Model to: {save_path}")
-

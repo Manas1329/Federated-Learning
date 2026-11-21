@@ -20,15 +20,9 @@ MODEL_PATH = MODELS_DIR / "local_model_hospital_A.pth"
 # -------------------------------
 # Device
 # -------------------------------
-FORCE_CPU = os.environ.get("FORCE_CPU", "0") == "1"
-if FORCE_CPU:
-    device = torch.device("cpu")
-else:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cuda.matmul.allow_tf32 = True
+from device_utils import get_device
 
+device = get_device()
 print(f"Using device: {device}")
 
 def train_local():
@@ -36,7 +30,7 @@ def train_local():
     print("Training LOCAL Model exclusively on Hospital A data")
     print("="*60)
 
-    trainloader, testloader = load_hospital_data(DATA_PATH, batch_size=32)
+    trainloader, valloader, testloader = load_hospital_data(DATA_PATH, batch_size=32)
 
     model = ChestCNN().to(device)
     criterion = nn.CrossEntropyLoss()

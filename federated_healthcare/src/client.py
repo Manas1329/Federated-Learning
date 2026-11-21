@@ -6,8 +6,10 @@ from datetime import datetime
 import flwr as fl
 import torch
 from collections import OrderedDict
-from model import ChestCNN, train, train_dp, test
+from typing import Any
+from model import ChestCNN, train, train_dp, test, evaluate_metrics
 from utils import load_hospital_data, load_partitions
+from device_utils import get_device
 
 from quantization import (
     quantize_parameters,
@@ -44,6 +46,15 @@ from paths import resolve_data_path, RESULTS_DIR
 # --------------------------------------------------
 # Configuration
 # --------------------------------------------------
+
+# Experiment-only behavior must be explicitly enabled so normal runs cannot
+# accidentally consume experiment environment variables.
+RUN_MODE = os.environ.get("RUN_MODE", "normal").strip().lower()
+
+
+def _is_experiment_enabled(variable_name):
+    return RUN_MODE == "experiment" and variable_name in os.environ
+
 
 # Get hospital/client name from environment
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Hospital_A")
@@ -101,12 +112,7 @@ CSV_FILE = RESULTS_DIR_SUFFIX / f"{CLIENT_NAME}_{SUFFIX}.csv"
 # Device
 # --------------------------------------------------
 
-FORCE_CPU = os.environ.get("FORCE_CPU", "0") == "1"
-if FORCE_CPU:
-    device = torch.device("cpu")
-else:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+device = get_device()
 print(f"[{CLIENT_NAME}] Using device: {device}")
 
 
@@ -118,17 +124,34 @@ net = ChestCNN().to(device)
 
 
 # --------------------------------------------------
-# Data
+# Data (Loaded via Manifest Partitions)
 # --------------------------------------------------
 
+DATASET_VERSION = os.environ.get("DATASET_VERSION", "dataset_v001")
+if "BATCH_SIZE" in os.environ:
+    BATCH_SIZE = int(os.environ["BATCH_SIZE"])
+elif device.type == "cuda" and not USE_DP:
+    BATCH_SIZE = 4
+else:
+    BATCH_SIZE = 4 if USE_DP else 32
+print(f"[{CLIENT_NAME}] Batch size: {BATCH_SIZE}")
+
+if device.type == "cuda" and torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+trainloader, validationloader, testloader = load_hospital_data(
+    DATA_PATH,
+    batch_size=BATCH_SIZE,
+    return_val=True,
+    dataset_version=DATASET_VERSION
+)
+
 if USE_DP:
-    trainloader, testloader = load_hospital_data(DATA_PATH, batch_size=4)
-    
     from opacus import PrivacyEngine
     import torch.optim as optim
     
     global_privacy_engine = PrivacyEngine()
-    global_dp_optimizer = optim.Adam(net.parameters(), lr=0.001)
+    global_dp_optimizer = optim.Adam(net.parameters(), lr=float(os.environ.get("LEARNING_RATE", "0.001")))
     
     make_private_result = global_privacy_engine.make_private(
         module=net,
@@ -138,10 +161,11 @@ if USE_DP:
         max_grad_norm=DP_MAX_GRAD_NORM,
     )
 
-    if len(make_private_result) == 4:
-        global_private_net, global_dp_optimizer, global_dp_trainloader, _ = make_private_result
+    private_result: Any = make_private_result
+    if len(private_result) == 4:
+        global_private_net, global_dp_optimizer, global_dp_trainloader, _ = private_result
     else:
-        global_private_net, global_dp_optimizer, global_dp_trainloader = make_private_result
+        global_private_net, global_dp_optimizer, global_dp_trainloader = private_result
 
     # ============================================================
     # MONKEY-PATCH OPACUS CONTRACT TO FIX DEVICE MISMATCH
@@ -154,13 +178,10 @@ if USE_DP:
                 a1, a2 = args[1], args[2]
                 if isinstance(a1, torch.Tensor) and isinstance(a2, torch.Tensor):
                     if a1.device != a2.device:
-                        # Move per_sample_clip_factor to the device of grad_sample
                         args = (args[0], a1.to(a2.device), a2) + args[3:]
             return old_contract(*args, **kwargs)
-        opacus.optimizers.optimizer.contract = new_contract
-        opacus.optimizers.optimizer._patched_contract = True
-else:
-    trainloader, testloader = load_hospital_data(DATA_PATH)
+        setattr(opacus.optimizers.optimizer, "contract", new_contract)
+        setattr(opacus.optimizers.optimizer, "_patched_contract", True)
 
 
 # --------------------------------------------------
@@ -262,7 +283,7 @@ class HospitalClient(fl.client.NumPyClient):
         round_number = config.get("server_round", 0)
 
         # [EXPERIMENT-ONLY] Simulate exact network dropout at specific round
-        if "NETWORK_DROPOUT_ROUND" in os.environ:
+        if _is_experiment_enabled("NETWORK_DROPOUT_ROUND"):
             dropout_round = int(os.environ["NETWORK_DROPOUT_ROUND"])
             if round_number == dropout_round:
                 print(f"[{CLIENT_NAME}] [EXPERIMENT] Simulating network dropout at round {round_number}. Exiting immediately.")
@@ -285,7 +306,8 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # TRAINING CONFIGURATION
         # ============================================================
-        NUM_EPOCHS = 2
+        NUM_EPOCHS = int(os.environ.get("LOCAL_EPOCHS", "2"))
+        LEARNING_RATE = float(os.environ.get("LEARNING_RATE", "0.001"))
         epoch_times = []
         epsilon = None
         
@@ -315,7 +337,8 @@ class HospitalClient(fl.client.NumPyClient):
                 privacy_engine=global_privacy_engine,
                 epochs=NUM_EPOCHS,
                 delta=DP_DELTA,
-                class_weight=pneumonia_weight  # Passed DACM weight
+                class_weight=pneumonia_weight,  # Passed DACM weight
+                device=device
             )
 
             epoch_end = time.perf_counter()
@@ -329,6 +352,8 @@ class HospitalClient(fl.client.NumPyClient):
         # NORMAL TRAINING
         # ============================================================
         else:
+            # Create optimizer once per fit operation, reuse across local epochs
+            optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
             for epoch in range(NUM_EPOCHS):
                 epoch_start = time.perf_counter()
 
@@ -336,7 +361,9 @@ class HospitalClient(fl.client.NumPyClient):
                     net,
                     trainloader,
                     epochs=1,
-                    class_weight=pneumonia_weight  # Passed DACM weight
+                    class_weight=pneumonia_weight,  # Passed DACM weight
+                    device=device,
+                    optimizer=optimizer
                 )
 
                 epoch_end = time.perf_counter()
@@ -350,7 +377,7 @@ class HospitalClient(fl.client.NumPyClient):
         # ============================================================
         # [EXPERIMENT-ONLY] Inject artificial delays if configured
         delay_sec = 0.0
-        if "NONSTATIONARY_DELAYS" in os.environ:
+        if _is_experiment_enabled("NONSTATIONARY_DELAYS"):
             ns_delays_str = os.environ["NONSTATIONARY_DELAYS"]
             # format: "1:10,2:50,3:30"
             for pair in ns_delays_str.split(","):
@@ -359,7 +386,7 @@ class HospitalClient(fl.client.NumPyClient):
                     if int(r_str.strip()) == round_number:
                         delay_sec = float(d_str.strip())
                         break
-        elif "ARTIFICIAL_DELAY_SEC" in os.environ:
+        elif _is_experiment_enabled("ARTIFICIAL_DELAY_SEC"):
             delay_sec = float(os.environ["ARTIFICIAL_DELAY_SEC"])
 
         if delay_sec > 0:
@@ -500,67 +527,39 @@ class HospitalClient(fl.client.NumPyClient):
                 
                 # ---> DACM METADATA <---
                 "normal_count": float(normal_count),
-                "pneumonia_count": float(pneumonia_count)
+                "pneumonia_count": float(pneumonia_count),
+                "dataset_version": str(DATASET_VERSION)
             }
         )
 
     # --------------------------------------------------
-    # EVALUATE
+    # EVALUATE (Round-Wise Validation Partition Only)
     # --------------------------------------------------
 
     def evaluate(self, parameters, config):
-        from sklearn.metrics import precision_score, recall_score, f1_score
-
         self.set_parameters(parameters)
         round_number = config.get("server_round", 0)
         evaluation_start = time.perf_counter()
 
-        # Run standard loss/accuracy test
-        loss, accuracy = test(net, testloader)
-
-        # --------------------------------------------------
-        # Collect predictions for F1 / Precision / Recall
-        # --------------------------------------------------
-        net.to(device)
-        net.eval()
-        all_labels = []
-        all_predictions = []
-        with torch.no_grad():
-            for images, labels in testloader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = net(images)
-                _, predicted = torch.max(outputs, 1)
-                all_labels.extend(labels.cpu().numpy())
-                all_predictions.extend(predicted.cpu().numpy())
-
-        import numpy as np
-        all_labels = np.array(all_labels)
-        all_predictions = np.array(all_predictions)
-
-        precision = precision_score(
-            all_labels, all_predictions,
-            average="binary", zero_division=0
-        )
-        recall = recall_score(
-            all_labels, all_predictions,
-            average="binary", zero_division=0
-        )
-        f1 = f1_score(
-            all_labels, all_predictions,
-            average="binary", zero_division=0
-        )
+        # Single-pass evaluation on VALIDATION partition only
+        metrics = evaluate_metrics(net, validationloader, device=device)
+        loss = metrics["loss"]
+        accuracy = metrics["accuracy"]
+        f1 = metrics["f1"]
+        precision = metrics["precision"]
+        recall = metrics["recall"]
 
         evaluation_time = (time.perf_counter() - evaluation_start)
 
         print(
             f"[{CLIENT_NAME}] "
-            f"Round {round_number} Evaluation -> "
+            f"Round {round_number} Validation -> "
             f"Loss: {loss:.4f}, "
             f"Accuracy: {accuracy:.4f}, "
             f"F1: {f1:.4f}, "
             f"Precision: {precision:.4f}, "
-            f"Recall: {recall:.4f}"
+            f"Recall: {recall:.4f} "
+            f"(TP={metrics['tp']}, TN={metrics['tn']}, FP={metrics['fp']}, FN={metrics['fn']})"
         )
 
         # Save evaluation result
@@ -590,7 +589,7 @@ class HospitalClient(fl.client.NumPyClient):
 
         return (
             float(loss),
-            len(testloader.dataset),
+            len(validationloader.dataset),
             {
                 "accuracy":         float(accuracy),
                 "loss":             float(loss),
@@ -598,9 +597,16 @@ class HospitalClient(fl.client.NumPyClient):
                 "precision":        float(precision),
                 "recall":           float(recall),
                 "evaluation_time":  float(evaluation_time),
-                # client_name is required by the server's trust module
-                # to correctly attribute evaluation metrics to this hospital
                 "client_name":      str(CLIENT_NAME),
+                "dataset_version":  str(DATASET_VERSION),
+                "correct":          int(metrics["correct"]),
+                "total":            int(metrics["total"]),
+                "sample_count":     int(metrics["sample_count"]),
+                "tp":               int(metrics["tp"]),
+                "tn":               int(metrics["tn"]),
+                "fp":               int(metrics["fp"]),
+                "fn":               int(metrics["fn"]),
+                "loss_sum":         float(metrics["loss_sum"])
             }
         )
 

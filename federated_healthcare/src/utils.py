@@ -1,134 +1,143 @@
-# import os
-# import torch
-# from torch.utils.data import DataLoader, random_split
-# from torchvision import datasets, transforms
-# from PIL import Image
+"""
+utils.py
+========
+Data loading and partition utilities for Federated Healthcare Learning.
+Integrates manifest-based dataset versioning and reproducible
+train/validation/test splitting without modifying existing directory structures.
+"""
 
-# def load_hospital_data(data_path, batch_size=32, img_size=128):
-#     """
-#     Load chest X-ray images from hospital-specific folder structure.
-    
-#     Expected folder structure:
-#         data_path/
-#             train/
-#                 NORMAL/
-#                 PNEUMONIA/
-#             test/
-#                 NORMAL/
-#                 PNEUMONIA/
-    
-#     Returns:
-#         trainloader, testloader (DataLoader objects)
-#     """
-#     transform = transforms.Compose([
-#         transforms.Grayscale(num_output_channels=1),
-#         transforms.Resize((img_size, img_size)),
-#         transforms.ToTensor(),
-#     ])
-
-    # train_path = os.path.join(data_path, "train")
-    # test_path = os.path.join(data_path, "test")
-
-    # # If actual data folders don't exist, create dummy data for testing
-    # if not os.path.exists(train_path):
-    #     os.makedirs(os.path.join(train_path, "NORMAL"), exist_ok=True)
-    #     os.makedirs(os.path.join(train_path, "PNEUMONIA"), exist_ok=True)
-    #     # Create a few dummy black images so DataLoader can initialize
-    #     for i in range(4):
-    #         dummy_img = Image.new("L", (img_size, img_size), 0)
-    #         dummy_img.save(os.path.join(train_path, "NORMAL", f"dummy_{i}.png"))
-    #         dummy_img.save(os.path.join(train_path, "PNEUMONIA", f"dummy_{i}.png"))
-
-    # if not os.path.exists(test_path):
-    #     os.makedirs(os.path.join(test_path, "NORMAL"), exist_ok=True)
-    #     os.makedirs(os.path.join(test_path, "PNEUMONIA"), exist_ok=True)
-    #     for i in range(2):
-    #         dummy_img = Image.new("L", (img_size, img_size), 0)
-    #         dummy_img.save(os.path.join(test_path, "NORMAL", f"dummy_{i}.png"))
-    #         dummy_img.save(os.path.join(test_path, "PNEUMONIA", f"dummy_{i}.png"))
-
-    # train_dataset = datasets.ImageFolder(root=train_path, transform=transform)
-    # test_dataset = datasets.ImageFolder(root=test_path, transform=transform)
-
-    # trainloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    # testloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-    # print(f"Loaded {len(train_dataset)} training and {len(test_dataset)} test samples from {data_path}")
-    
-    # return trainloader, testloader
 import os
-import torch
-from torch.utils.data import DataLoader, random_split
-from torchvision import datasets, transforms
-
+import sys
 from pathlib import Path
+from typing import Tuple, Dict, Any, Optional, Union
+import torch
+from torch.utils.data import DataLoader
+from torchvision import transforms
 
-def load_hospital_data(data_path, batch_size=32, img_size=128):
+SRC_DIR = Path(__file__).resolve().parent
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from paths import resolve_data_path, MANIFESTS_DIR
+from dataset_manifest import DatasetManifestManager, build_manifest_dataloaders
+
+
+def _canonical_hospital_id(data_path: Union[str, Path], client_id: Optional[str] = None) -> str:
+    """Derive standard hospital ID (e.g. 'Hospital_A') from path or client name."""
+    if client_id:
+        c = client_id.strip()
+        parts = c.split("_")
+        if len(parts) == 2 and parts[0].lower() == "hospital":
+            return f"Hospital_{parts[1].upper()}"
+        return c
+
+    p = Path(data_path)
+    dir_name = p.name
+    parts = dir_name.split("_")
+    if len(parts) == 2 and parts[0].lower() == "hospital":
+        return f"Hospital_{parts[1].upper()}"
+    return dir_name
+
+
+def load_hospital_data(
+    data_path: Union[str, Path],
+    batch_size: int = 32,
+    img_size: int = 128,
+    return_val: bool = True,
+    dataset_version: Optional[str] = None,
+    split_seed: int = 42,
+    train_ratio: float = 0.70,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15
+) -> Any:
     """
-    Load chest X-ray images from hospital-specific folder structure.
+    Load chest X-ray images for a hospital using its immutable dataset manifest.
 
-    Expected folder structure:
+    Preserves original folders:
         data_path/
             train/
                 NORMAL/
                 PNEUMONIA/
 
     Returns:
-        trainloader, testloader (DataLoader objects)
+        If return_val is True (default):
+            (trainloader, validationloader, testloader)
+        If return_val is False:
+            (trainloader, testloader)
     """
+    data_path = Path(data_path)
+    version_id = dataset_version or os.environ.get("DATASET_VERSION", "dataset_v001")
+    hospital_id = _canonical_hospital_id(data_path, os.environ.get("CLIENT_NAME"))
 
-    train_path = Path(data_path) / "train"
+    manager = DatasetManifestManager(MANIFESTS_DIR)
+    manifest_file = manager.get_hospital_manifest_dir(hospital_id) / f"{version_id}.json"
 
-    transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1),
-        transforms.Resize((img_size, img_size)),
-        transforms.ToTensor(),
-    ])
+    if manifest_file.exists():
+        manifest = manager.load_manifest(hospital_id, version_id)
+    else:
+        # Create manifest deterministically if not yet present
+        print(f"[utils] Manifest {version_id} not found for {hospital_id}. Generating from existing image directory...")
+        manifest, _ = manager.create_manifest(
+            hospital_id=hospital_id,
+            hospital_data_path=data_path,
+            version_id=version_id,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            split_seed=split_seed
+        )
 
-    # Load the complete dataset
-    full_dataset = datasets.ImageFolder(
-        root=train_path,
-        transform=transform
-    )
-
-    # Split into 80% training and 20% testing
-    train_size = int(0.8 * len(full_dataset))
-    test_size = len(full_dataset) - train_size
-
-    train_dataset, test_dataset = random_split(
-        full_dataset,
-        [train_size, test_size],
-        generator=torch.Generator().manual_seed(42)
-    )
-
-    trainloader = DataLoader(
-        train_dataset,
+    trainloader, valloader, testloader = build_manifest_dataloaders(
+        hospital_data_path=data_path,
+        manifest=manifest,
         batch_size=batch_size,
-        shuffle=True
+        img_size=img_size
     )
 
-    testloader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False
-    )
-
-    print(f"Loaded {len(train_dataset)} training samples")
-    print(f"Loaded {len(test_dataset)} testing samples")
-
-    return trainloader, testloader
+    if return_val:
+        return trainloader, valloader, testloader
+    else:
+        return trainloader, testloader
 
 
-def load_partitions(client_id="Hospital_A", batch_size=32):
+def load_partitions(
+    client_id: str = "Hospital_A",
+    batch_size: int = 32,
+    return_val: bool = False,
+    dataset_version: Optional[str] = None
+) -> Any:
     """
     Load data partitions for a hospital client.
-    Returns: trainloader, testloader, num_examples
+
+    Returns:
+        If return_val is True:
+            (trainloader, validationloader, testloader, num_examples)
+        If return_val is False (default for backward-compatibility):
+            (trainloader, testloader, num_examples)
     """
-    from paths import resolve_data_path
     data_path = resolve_data_path(None, client_id)
-    trainloader, testloader = load_hospital_data(data_path, batch_size=batch_size)
-    num_examples = {
-        "trainset": len(trainloader.dataset),
-        "testset": len(testloader.dataset)
-    }
-    return trainloader, testloader, num_examples
+    if return_val:
+        trainloader, valloader, testloader = load_hospital_data(
+            data_path,
+            batch_size=batch_size,
+            return_val=True,
+            dataset_version=dataset_version
+        )
+        num_examples = {
+            "trainset": len(trainloader.dataset),
+            "valset": len(valloader.dataset),
+            "testset": len(testloader.dataset)
+        }
+        return trainloader, valloader, testloader, num_examples
+    else:
+        trainloader, testloader = load_hospital_data(
+            data_path,
+            batch_size=batch_size,
+            return_val=False,
+            dataset_version=dataset_version
+        )
+        num_examples = {
+            "trainset": len(trainloader.dataset),
+            "testset": len(testloader.dataset)
+        }
+        return trainloader, testloader, num_examples

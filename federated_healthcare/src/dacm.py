@@ -18,6 +18,7 @@ import sys
 import copy
 import argparse
 from pathlib import Path
+from typing import Optional
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch
@@ -36,6 +37,7 @@ if str(SRC_DIR) not in sys.path:
 
 from paths import DATA_DIR, MODELS_DIR
 from model import ChestCNN
+from device_utils import get_device
 
 
 # ----------------------------------------------------------------------
@@ -247,10 +249,10 @@ def train_concurrent_recovery(
     dacm_weights: torch.Tensor,
     epochs: int = 2,
     lr: float = 1e-3,
-    device = None,
-    client_ids: list = None,
+    device: Optional[torch.device] = None,
+    client_ids: Optional[list[str]] = None,
     concurrent: bool = True,
-    max_workers: int = None,
+    max_workers: Optional[int] = None,
 ) -> list[tuple[nn.Module, int]]:
     """
     Train local recovery models across surviving clients concurrently or sequentially.
@@ -372,7 +374,7 @@ def fedavg_aggregate(
         New model instance with aggregated weights.
     """
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = get_device()
 
     total_samples = sum(n for _, n in local_models_with_sizes)
     if total_samples == 0:
@@ -404,19 +406,19 @@ def fedavg_aggregate(
 # ----------------------------------------------------------------------
 
 def execute_dacm_recovery(
-    unlearned_model: nn.Module = None,
-    unlearned_model_path: str = None,
-    excluded_client: str = None,
-    surviving_clients: list = None,
-    active_clients: set = None,
+    unlearned_model: Optional[nn.Module] = None,
+    unlearned_model_path: Optional[str] = None,
+    excluded_client: Optional[str] = None,
+    surviving_clients: Optional[list[str]] = None,
+    active_clients: Optional[set[str]] = None,
     tau_safe: float = 0.50,
     alpha: float = 3.0,
     epochs: int = 2,
     lr: float = 1e-3,
-    device = None,
-    save_path: str = None,
+    device: Optional[torch.device] = None,
+    save_path: Optional[str] = None,
     concurrent: bool = True,
-    max_workers: int = None,
+    max_workers: Optional[int] = None,
 ) -> tuple[nn.Module, torch.Tensor, dict, list]:
     """
     Execute fully federated and dynamic DACM recovery.
@@ -463,6 +465,9 @@ def execute_dacm_recovery(
         )
     else:
         unlearned_model.to(device)
+
+    if unlearned_model is None:
+        raise DACMRecoveryError("Unable to resolve a starting model for DACM recovery.")
 
     # 2. Dynamic surviving-client detection
     if surviving_clients is None:

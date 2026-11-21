@@ -28,8 +28,8 @@ async def get_current_user(
     if payload is None:
         raise credentials_exception
 
-    username: str = payload.get("sub")
-    if username is None:
+    username = payload.get("sub")
+    if not isinstance(username, str):
         raise credentials_exception
 
     user = db.query(User).filter(User.username == username).first()
@@ -103,8 +103,8 @@ async def get_current_user_from_cookie(
     payload = decode_access_token(token)
     if payload is None:
         return None
-    username: str = payload.get("sub")
-    if username is None:
+    username = payload.get("sub")
+    if not isinstance(username, str):
         return None
     user = db.query(User).filter(User.username == username).first()
     if user is None or not user.is_active:

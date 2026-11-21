@@ -189,7 +189,8 @@ torch.save(unlearned_model.state_dict(), str(UNLEARNED_PATH))
 print("Unlearned model saved: " + str(UNLEARNED_PATH))
 
 # Quick accuracy check on Hospital B (expect degraded)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from src.device_utils import get_device
+device = get_device()
 unlearned_model.eval().to(device)
 preds, labs = [], []
 with torch.no_grad():

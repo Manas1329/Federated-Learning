@@ -30,6 +30,12 @@ PLOTS_DIR = DASHBOARD_DIR / "plots"
 FIGURES_DIR = PLOTS_DIR / "figures"
 REPORTS_DIR = DASHBOARD_DIR / "classification_reports"
 
+# Periodic Retraining & Manifest Directories
+MANIFESTS_DIR = FEDERATED_HEALTHCARE_DIR / "dataset_manifests"
+APPROVED_MODELS_DIR = MODELS_DIR / "approved"
+RUNS_MODELS_DIR = MODELS_DIR / "runs"
+RUNS_RESULTS_DIR = RESULTS_DIR / "runs"
+
 # Ensure core directories exist
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 DASHBOARD_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,8 +45,12 @@ EXPERIMENTS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+MANIFESTS_DIR.mkdir(parents=True, exist_ok=True)
+APPROVED_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+RUNS_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+RUNS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-def resolve_data_path(env_data_path: str = None, client_name: str = None) -> Path:
+def resolve_data_path(env_data_path: str | None = None, client_name: str | None = None) -> Path:
     """
     Resolve the data path for a client robustly.
     Tries multiple candidate locations in order:

@@ -1,0 +1,45 @@
+{
+  "run_id": "run_20261120_075302",
+  "training_start_time": "2026-11-20T07:53:02.463370Z",
+  "training_end_time": "2026-11-20T07:58:28.464488Z",
+  "environment": {
+    "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "pytorch_version": "2.11.0+cu128",
+    "flower_version": "1.8.0",
+    "opacus_version": "1.4.1",
+    "git_commit": "b3c36c66243bfe24a5c378819c169fece211d653"
+  },
+  "best_round": 5,
+  "best_val_loss": 0.0823779795811893,
+  "best_val_accuracy": 0.9663461538461539,
+  "final_round": 10,
+  "early_stopped": true,
+  "early_stopping_reason": "Validation loss did not improve by 0.001 for 5 consecutive rounds after round 5",
+  "acceptance_result": null,
+  "promotion_result": "PROMOTED",
+  "config": {
+    "run_id": "run_20261120_075302",
+    "training_mode": "fresh",
+    "parent_model_id": null,
+    "parent_run_id": null,
+    "total_rounds": 10,
+    "target_clients": 3,
+    "min_clients": 2,
+    "use_dp": false,
+    "use_quantization": false,
+    "early_stopping_enabled": true,
+    "early_stopping_patience": 5,
+    "early_stopping_min_delta": 0.001,
+    "min_rounds": 5,
+    "dataset_version": "dataset_v001"
+  },
+  "final_test_metrics": {
+    "accuracy": 0.9711538461538461,
+    "precision": 0.9810606060606061,
+    "recall": 0.9736842105263158,
+    "f1": 0.9773584905660377,
+    "loss": 0.0951567034308727,
+    "total": 416
+  },
+  "promotion_reason": "All criteria satisfied"
+}

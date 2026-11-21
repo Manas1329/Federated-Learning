@@ -264,7 +264,7 @@ class WorkspaceManager:
         resolved, err = self.resolve_and_validate(
             root_key, rel_path, role, hospital_id, require_exists=True
         )
-        if err:
+        if err or resolved is None:
             return None, err
         if not resolved.is_dir():
             return None, "Not a directory"
@@ -346,7 +346,7 @@ class WorkspaceManager:
         resolved, err = self.resolve_and_validate(
             root_key, rel_path, role, hospital_id, require_exists=True
         )
-        if err:
+        if err or resolved is None:
             return None, err
         if not resolved.is_file():
             return None, "Not a file"
@@ -366,7 +366,7 @@ class WorkspaceManager:
         resolved, err = self.resolve_and_validate(
             root_key, rel_path, role, hospital_id, require_exists=True
         )
-        if err:
+        if err or resolved is None:
             return None, err
         if not resolved.is_file():
             return None, "Not a file"

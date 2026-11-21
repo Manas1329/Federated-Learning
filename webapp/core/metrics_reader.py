@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+def _round_optional(value: Optional[float], places: int) -> Optional[float]:
+    return round(value, places) if value is not None else None
+
+
 @dataclass
 class GlobalRoundMetric:
     round: int
@@ -232,15 +236,21 @@ class MetricsReader:
                 for rn in rounds_seen
             ],
             "accuracies": [
-                round(eval_by_round[rn].accuracy * 100, 2)
-                if rn in eval_by_round and eval_by_round[rn].accuracy is not None
-                else None
+                _round_optional(
+                    eval_by_round[rn].accuracy * 100
+                    if rn in eval_by_round and eval_by_round[rn].accuracy is not None
+                    else None,
+                    2,
+                )
                 for rn in rounds_seen
             ],
             "losses": [
-                round(eval_by_round[rn].loss, 4)
-                if rn in eval_by_round and eval_by_round[rn].loss is not None
-                else None
+                _round_optional(
+                    eval_by_round[rn].loss
+                    if rn in eval_by_round and eval_by_round[rn].loss is not None
+                    else None,
+                    4,
+                )
                 for rn in rounds_seen
             ],
             "payload_sizes_mb": [

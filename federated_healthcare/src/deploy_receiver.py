@@ -33,13 +33,13 @@ from __future__ import annotations
 
 import os
 import sys
-import json
 import time
 import hashlib
 import argparse
 import threading
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import ClassVar, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -112,12 +112,13 @@ def _run_local_inference(client_name, deployed_model_path):
         return None
 
     try:
-        _trainloader, testloader = load_hospital_data(str(local_data_path))
+        _, _, testloader = load_hospital_data(str(local_data_path))
     except Exception as exc:
         print("[Receiver] Could not load local data: {}".format(exc))
         return None
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    from device_utils import get_device
+    device = get_device()
     model  = ChestCNN().to(device)
     try:
         state_dict = torch.load(str(deployed_model_path), map_location=device)
@@ -170,14 +171,14 @@ def _run_local_inference(client_name, deployed_model_path):
 
 class _ReceiverState:
     """Mutable singleton state shared between HTTP handler and main thread."""
-    received_event = threading.Event()
-    received_path  = None     # Path where last model was saved
-    received_ok    = False    # True if SHA256 verified
-    client_name    = "Unknown"
-    save_dir       = None     # Path
-    no_inference   = False
-    run_once       = False
-    _lock          = threading.Lock()
+    received_event: ClassVar[threading.Event] = threading.Event()
+    received_path: ClassVar[Optional[Path]] = None
+    received_ok: ClassVar[bool] = False
+    client_name: ClassVar[str] = "Unknown"
+    save_dir: ClassVar[Optional[Path]] = None
+    no_inference: ClassVar[bool] = False
+    run_once: ClassVar[bool] = False
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
 
 class _ReceiverHandler(BaseHTTPRequestHandler):
@@ -203,9 +204,6 @@ class _ReceiverHandler(BaseHTTPRequestHandler):
 
         data         = self.rfile.read(content_length)
         remote_sha   = self.headers.get("X-Model-SHA256", "")
-        client_name  = self.headers.get("X-Client-Name",  _ReceiverState.client_name)
-        model_name   = self.headers.get("X-Model-Name",   "deployed_model.pth")
-
         # Verify integrity
         local_sha = _sha256_bytes(data)
         if remote_sha and local_sha != remote_sha:
@@ -259,7 +257,7 @@ class _ReceiverHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt, *args):
-        pass  # Suppress Apache-style logs
+        del fmt, args  # Suppress Apache-style logs
 
 
 _shutdown_flag = threading.Event()

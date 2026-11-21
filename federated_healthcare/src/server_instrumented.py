@@ -75,7 +75,12 @@ from flwr.server.client_proxy import ClientProxy
 
 from server import (
     SaveModelStrategy,
-    evaluate_metrics_aggregation_fn as _original_eval_fn,
+    setup_initial_model,
+    run_manager,
+    device,
+    TRAINING_MODE,
+    INIT_MODEL_PATH_ENV,
+    ALLOW_RANDOM_FALLBACK,
     RESULTS_DIR,
     MODEL_DIR,
     MODEL_PATH,
@@ -139,7 +144,16 @@ def instrumented_eval_fn(metrics):
     CSVs and prints the banner), then fires the dashboard round-complete
     hook with the resulting aggregated metrics.
     """
-    result = _original_eval_fn(metrics)
+    total_examples = sum(num_examples for num_examples, _ in metrics)
+    result = {
+        key: (
+            sum(num_examples * float(values.get(key, 0.0)) for num_examples, values in metrics)
+            / total_examples
+            if total_examples
+            else 0.0
+        )
+        for key in ("accuracy", "loss", "f1", "precision", "recall")
+    }
 
     # Determine which round this is (same logic as original fn)
     import pandas as pd
@@ -216,13 +230,22 @@ class InstrumentedAdaptiveServer(AdaptiveServer):
 # ──────────────────────────────────────────────────────────────────
 
 strategy = InstrumentedStrategy(
+    run_manager_inst         = run_manager,
     fraction_fit               = 1.0,
     fraction_evaluate          = 1.0,
     min_fit_clients            = TARGET_CLIENTS,
     min_evaluate_clients       = MIN_CLIENTS,
     min_available_clients      = MIN_CLIENTS,
-    evaluate_metrics_aggregation_fn = instrumented_eval_fn,
 )
+
+_, _initial_parameters, _, _ = setup_initial_model(
+    training_mode=TRAINING_MODE,
+    init_path_str=INIT_MODEL_PATH_ENV,
+    allow_random=ALLOW_RANDOM_FALLBACK,
+    manager=run_manager,
+    target_device=device,
+)
+strategy.initial_parameters = _initial_parameters
 
 client_manager = fl.server.SimpleClientManager()
 
@@ -241,11 +264,10 @@ server = InstrumentedAdaptiveServer(
     strategy           = strategy,
     target_clients     = TARGET_CLIENTS,
     min_clients        = MIN_CLIENTS,
-    initial_grace_period = init_grace,
-    max_grace_period   = max_grace,
-    round_timeout      = round_to,
+    total_rounds       = NUM_ROUNDS,
+    hard_deadline      = round_to,
     suffix             = SUFFIX,
-    models_dir         = MODEL_DIR,
+    models_dir         = str(MODEL_DIR),
 )
 
 # ──────────────────────────────────────────────────────────────────

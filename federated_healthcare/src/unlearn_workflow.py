@@ -33,11 +33,14 @@ import torch
 import numpy as np
 from pathlib import Path
 from collections import OrderedDict
+from typing import Optional
 
 # Ensure src is importable regardless of cwd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from paths import MODELS_DIR
+from device_utils import get_device
+from model import ChestCNN
 # Heavy imports (flwr-chain) are deferred into run_unlearn_workflow()
 # so unlearn_server.py starts without touching tensorflow/protobuf.
 
@@ -231,14 +234,18 @@ def _fedavg_aggregate(local_models_with_sizes: list, base_model, device) -> "Che
     agg_state = OrderedDict()
     ref_state  = base_model.state_dict()
     for key in ref_state:
-        agg_state[key] = torch.zeros_like(ref_state[key], dtype=torch.float32)
+        agg_state[key] = torch.zeros_like(
+            ref_state[key],
+            dtype=torch.float32,
+            device=device,
+        )
 
     # Weighted sum
     for local_model, n in local_models_with_sizes:
         weight = n / total_samples
         local_state = local_model.state_dict()
         for key in agg_state:
-            agg_state[key] += weight * local_state[key].float()
+            agg_state[key] += weight * local_state[key].float().to(device)
 
     # Load into a fresh copy of the base model
     aggregated = _clone_model(base_model)
@@ -257,7 +264,7 @@ def _run_dacm_recovery(
     device,
     wc: float,
     concurrent: bool = True,
-    max_workers: int = None,
+    max_workers: Optional[int] = None,
 ) -> "ChestCNN":
     """
     Proper federated DACM recovery:
@@ -313,8 +320,8 @@ def _run_dacm_recovery(
 
 def run_unlearn_workflow(
     target_client: str,
-    suffix: str = None,
-    active_clients: set = None,
+    suffix: Optional[str] = None,
+    active_clients: Optional[set[str]] = None,
 ) -> bool:
     """
     Execute the full post-approval unlearning + DACM recovery pipeline.
@@ -339,7 +346,7 @@ def run_unlearn_workflow(
     if active_clients is None:
         active_clients = set(KNOWN_CLIENTS)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     global_model_path = MODELS_DIR / f"global_model_{effective_suffix}.pth"
 
     _print_banner(f"UNLEARNING WORKFLOW — Target: {target_client}")

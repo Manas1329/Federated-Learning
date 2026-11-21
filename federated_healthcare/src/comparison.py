@@ -9,9 +9,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.model import ChestCNN
 from src.utils import load_hospital_data
-from src.paths import DATA_DIR, MODELS_DIR, DASHBOARD_DIR, RESULTS_DIR
+from src.paths import DATA_DIR, MODELS_DIR, RESULTS_DIR
+from src.device_utils import get_device
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = get_device()
 
 def evaluate_model(model, testloader):
     model.eval()
@@ -48,6 +49,16 @@ def evaluate_model(model, testloader):
         
     return acc, prec, rec, f1, roc_auc, pr_auc
 
+
+def _accuracy_for_hospital(results: pd.DataFrame, hospital: str) -> float:
+    values = pd.to_numeric(
+        results.loc[results["hospital"] == hospital, "accuracy"],
+        errors="coerce",
+    ).dropna()
+    if values.empty:
+        raise ValueError(f"No numeric accuracy recorded for {hospital}")
+    return float(values.iloc[0])
+
 def main():
     model_a_path = MODELS_DIR / "local_model_hospital_A.pth"
     global_model_path = MODELS_DIR / "global_model_a_pure.pth"
@@ -79,7 +90,7 @@ def main():
             continue
             
         print(f"\nEvaluating on {hospital} test data...")
-        _, testloader = load_hospital_data(str(data_path))
+        _, _, testloader = load_hospital_data(str(data_path))
         
         # Eval A_only
         acc_a, prec_a, rec_a, f1_a, roc_a, pr_a = evaluate_model(model_a, testloader)
@@ -99,18 +110,18 @@ def main():
     # Calculate generalization gap for A_only
     a_only_df = df[df["model"] == "A_only"]
     if len(a_only_df) == 3:
-        acc_A = a_only_df[a_only_df["hospital"] == "Hospital_A"]["accuracy"].values[0]
-        acc_B = a_only_df[a_only_df["hospital"] == "Hospital_B"]["accuracy"].values[0]
-        acc_C = a_only_df[a_only_df["hospital"] == "Hospital_C"]["accuracy"].values[0]
+        acc_A = _accuracy_for_hospital(a_only_df, "Hospital_A")
+        acc_B = _accuracy_for_hospital(a_only_df, "Hospital_B")
+        acc_C = _accuracy_for_hospital(a_only_df, "Hospital_C")
         gap_a = acc_A - ((acc_B + acc_C) / 2)
         print(f"\nA_only Generalization Gap (Acc_A - Avg(Acc_B, Acc_C)): {gap_a:.4f}")
         
     # Calculate generalization gap for Federated
     fed_df = df[df["model"] == "Federated"]
     if len(fed_df) == 3:
-        acc_A = fed_df[fed_df["hospital"] == "Hospital_A"]["accuracy"].values[0]
-        acc_B = fed_df[fed_df["hospital"] == "Hospital_B"]["accuracy"].values[0]
-        acc_C = fed_df[fed_df["hospital"] == "Hospital_C"]["accuracy"].values[0]
+        acc_A = _accuracy_for_hospital(fed_df, "Hospital_A")
+        acc_B = _accuracy_for_hospital(fed_df, "Hospital_B")
+        acc_C = _accuracy_for_hospital(fed_df, "Hospital_C")
         gap_f = acc_A - ((acc_B + acc_C) / 2)
         print(f"Federated Generalization Gap (Acc_A - Avg(Acc_B, Acc_C)): {gap_f:.4f}")
         

@@ -291,7 +291,7 @@ def _run_local_inference(client_name, deployed_model_path, device):
         return None
 
     try:
-        _trainloader, testloader = load_hospital_data(str(local_data_path))
+        _trainloader, _valloader, testloader = load_hospital_data(str(local_data_path))
     except Exception as exc:
         print("  [{}] WARNING: Could not load local data: {}".format(client_name, exc))
         return None
@@ -485,7 +485,8 @@ def run_deployment(suffix=None, model_path=None, known_clients=None,
         )
 
         # 6. Local inference
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        from device_utils import get_device
+        device = get_device()
         print("\n[DEPLOYMENT] Inference device: {}".format(device))
 
         inference_results = []

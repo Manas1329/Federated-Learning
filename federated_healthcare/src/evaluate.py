@@ -1,5 +1,6 @@
 import os
 import random
+from typing import cast
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -35,9 +36,6 @@ from sklearn.metrics import (
     average_precision_score,
 )
 
-from sklearn.preprocessing import label_binarize
-
-from pathlib import Path
 import sys
 # Ensure 'src' package is importable regardless of where the script is run from
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -51,12 +49,8 @@ from utils import load_hospital_data
 # Device
 # -------------------------------
 
-FORCE_CPU = os.environ.get("FORCE_CPU", "0") == "1"
-if FORCE_CPU:
-    device = torch.device("cpu")
-else:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+from device_utils import get_device
+device = get_device()
 print(f"Using device: {device}")
 
 # -------------------------------
@@ -104,7 +98,7 @@ DATA_PATH = resolve_data_path(
     os.environ.get("DATA_PATH"),
     os.environ.get("CLIENT_NAME")
 )
-_, testloader = load_hospital_data(DATA_PATH)
+_, _, testloader = load_hospital_data(DATA_PATH)
 
 print("Test dataset loaded.")
 
@@ -335,17 +329,19 @@ report = classification_report(
     all_predictions,
     target_names=classes,
     digits=4,
+    output_dict=False,
 )
+report_text = cast(str, report)
 
 with open(REPORT_PATH, "w") as f:
     f.write("# Chest X-ray Pneumonia Classification Report\n\n")
     f.write("```text\n")
-    f.write(report)
+    f.write(report_text)
     f.write("\n```\n")
 
 print("\nClassification Report")
 print("=" * 60)
-print(report)
+print(report_text)
 
 print(f"\nClassification report saved to:\n{REPORT_PATH}")
 
